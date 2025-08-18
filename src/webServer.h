@@ -1,7 +1,7 @@
 #include "esp32-hal.h"
 #include <WiFi.h>
-#include <WebSocketsServer.h>
-#include <WiFiManager.h>
+#include <WebSocketsServer.h> // download at https://github.com/Links2004/arduinoWebSockets/
+#include <WiFiManager.h> // download at https://github.com/tzapu/WiFiManager
 
 #include <map>
 #include <ArduinoJson.h>
