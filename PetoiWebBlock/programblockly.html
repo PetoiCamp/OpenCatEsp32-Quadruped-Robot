@@ -559,6 +559,9 @@
     // 初始化时设置默认语言为英文
     window.addEventListener('DOMContentLoaded', function ()
     {
+      // 清理可能存在的残留对话框
+      cleanupResidualDialogs();
+      
       // 确保先动态加载英文语言文件，再进行其他初始化
       loadLanguageFile('en', function ()
       {
@@ -607,6 +610,15 @@
 
         // 加载配置文件
         loadConfig();
+      });
+
+      // 添加页面卸载时的清理
+      window.addEventListener('beforeunload', function() {
+        cleanupResidualDialogs();
+        // 关闭串口连接
+        if (port) {
+          quickCloseSerialPort();
+        }
       });
 
       // 添加控制台和串口输出区域的键盘复制功能
@@ -2568,6 +2580,18 @@ Generated at: ${now.toISOString()}
       {
         console.log("Creating all ports selector dialog...");
 
+        // 清理可能存在的旧对话框
+        const existingOverlay = document.querySelector('.esp32-port-selector');
+        if (existingOverlay) {
+          console.log("Removing existing port selector dialog");
+          document.body.removeChild(existingOverlay);
+        }
+
+        // 清理可能存在的全局函数
+        if (window.selectAllPort) delete window.selectAllPort;
+        if (window.selectSystemPort) delete window.selectSystemPort;
+        if (window.cancelAllPortSelection) delete window.cancelAllPortSelection;
+
         // 创建遮罩层
         const overlay = document.createElement('div');
         overlay.className = 'esp32-port-selector';
@@ -2623,10 +2647,7 @@ Generated at: ${now.toISOString()}
         window.selectAllPort = (index) =>
         {
           const selectedPort = ports[index];
-          document.body.removeChild(overlay);
-          delete window.selectAllPort;
-          delete window.selectSystemPort;
-          delete window.cancelAllPortSelection;
+          cleanupPortSelector();
           resolve(selectedPort);
         };
 
@@ -2635,10 +2656,7 @@ Generated at: ${now.toISOString()}
           try
           {
             const systemPort = await navigator.serial.requestPort();
-            document.body.removeChild(overlay);
-            delete window.selectAllPort;
-            delete window.selectSystemPort;
-            delete window.cancelAllPortSelection;
+            cleanupPortSelector();
             resolve(systemPort);
           } catch (error)
           {
@@ -2649,10 +2667,7 @@ Generated at: ${now.toISOString()}
             } else
             {
               console.error('Error in system port selection:', error);
-              document.body.removeChild(overlay);
-              delete window.selectAllPort;
-              delete window.selectSystemPort;
-              delete window.cancelAllPortSelection;
+              cleanupPortSelector();
               reject(error);
             }
           }
@@ -2660,12 +2675,25 @@ Generated at: ${now.toISOString()}
 
         window.cancelAllPortSelection = () =>
         {
-          document.body.removeChild(overlay);
+          cleanupPortSelector();
+          reject(new Error(getText("userCancelledSelection")));
+        };
+
+        // 清理函数
+        function cleanupPortSelector() {
+          try {
+            if (overlay && overlay.parentNode) {
+              document.body.removeChild(overlay);
+            }
+          } catch (error) {
+            console.warn('Error removing overlay:', error);
+          }
+          
+          // 清理全局函数
           delete window.selectAllPort;
           delete window.selectSystemPort;
           delete window.cancelAllPortSelection;
-          reject(new Error(getText("userCancelledSelection")));
-        };
+        }
 
         // 将对话框添加到遮罩层中
         overlay.appendChild(dialog);
@@ -2673,6 +2701,54 @@ Generated at: ${now.toISOString()}
 
         console.log("All ports selector dialog created and added to DOM");
       });
+    }
+
+    // 清理残留对话框的函数
+    function cleanupResidualDialogs() {
+      try {
+        // 清理可能存在的串口选择对话框
+        const existingOverlays = document.querySelectorAll('.esp32-port-selector');
+        existingOverlays.forEach(overlay => {
+          try {
+            if (overlay.parentNode) {
+              document.body.removeChild(overlay);
+              console.log('Removed residual port selector dialog');
+            }
+          } catch (error) {
+            console.warn('Error removing residual overlay:', error);
+          }
+        });
+
+        // 清理全局函数
+        if (window.selectAllPort) delete window.selectAllPort;
+        if (window.selectSystemPort) delete window.selectSystemPort;
+        if (window.cancelAllPortSelection) delete window.cancelAllPortSelection;
+
+        // 清理其他可能存在的对话框
+        const wifiDialog = document.querySelector('.wifi-dialog');
+        if (wifiDialog) {
+          try {
+            wifiDialog.remove();
+            console.log('Removed residual WiFi dialog');
+          } catch (error) {
+            console.warn('Error removing WiFi dialog:', error);
+          }
+        }
+
+        const overlay = document.querySelector('.overlay');
+        if (overlay) {
+          try {
+            overlay.remove();
+            console.log('Removed residual overlay');
+          } catch (error) {
+            console.warn('Error removing overlay:', error);
+          }
+        }
+
+        console.log('Cleanup of residual dialogs completed');
+      } catch (error) {
+        console.warn('Error during cleanup of residual dialogs:', error);
+      }
     }
 
     async function openSerialPort()
@@ -2795,6 +2871,15 @@ Generated at: ${now.toISOString()}
           showCustomAlert(getText("serialValidationFailed"), getText("connectionFailed"));
           // 快速关闭串口，不等待超时
           quickCloseSerialPort();
+          // 清理可能存在的对话框
+          const existingOverlay = document.querySelector('.esp32-port-selector');
+          if (existingOverlay) {
+            try {
+              document.body.removeChild(existingOverlay);
+            } catch (error) {
+              console.warn('Error removing overlay after validation failure:', error);
+            }
+          }
           return;
         }
 
@@ -2868,6 +2953,22 @@ Generated at: ${now.toISOString()}
         port = null;
         writer = null;
         reader = null;
+        
+        // 清理可能存在的对话框
+        const existingOverlay = document.querySelector('.esp32-port-selector');
+        if (existingOverlay) {
+          try {
+            document.body.removeChild(existingOverlay);
+          } catch (cleanupError) {
+            console.warn('Error removing overlay after connection failure:', cleanupError);
+          }
+        }
+        
+        // 清理全局函数
+        if (window.selectAllPort) delete window.selectAllPort;
+        if (window.selectSystemPort) delete window.selectSystemPort;
+        if (window.cancelAllPortSelection) delete window.cancelAllPortSelection;
+        
         // 只有在没有WebSocket连接时才重置Quick Connect按钮
         // 如果有currentDeviceIP，说明可能还有WebSocket连接，不重置按钮
         if (!currentDeviceIP || currentDeviceIP === '192.168.4.1')
@@ -3509,79 +3610,107 @@ Generated at: ${now.toISOString()}
         serialBufferText = '';
         serialBuffer = '';
 
-        // 发送'?'字符
-        const encoder = new TextEncoder();
-        const data = encoder.encode('?');
-        await writer.write(data);
-        console.log(getText("sentValidationCommand"));
-
-        // 根据操作系统设置等待时间
+        // 根据操作系统设置等待时间和重试次数
         const os = OPERATING_SYSTEM;
-        const waitTime = (os === 'windows') ? TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_WINDOWS : TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_OTHER; // 使用配置的验证超时时间
+        const waitTime = (os === 'windows') ? TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_WINDOWS : TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_OTHER;
+        const maxRetries = (os === 'windows') ? 3 : 1; // Windows系统重试3次，其他系统重试1次
 
-        const startTime = Date.now();
-        let response = '';
-        let validationTimeout = false;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            console.log(getText("sentValidationCommand") + ` (attempt ${attempt}/${maxRetries})`);
 
-        // 设置超时时间
-        const timeoutPromise = new Promise((resolve) =>
-        {
-          setTimeout(() =>
-          {
-            validationTimeout = true;
-            resolve();
-          }, waitTime);
-        });
+            // 发送'?'字符
+            const encoder = new TextEncoder();
+            const data = encoder.encode('?');
+            await writer.write(data);
 
-        // 等待回复或超时
-        const responsePromise = new Promise(async (resolve) =>
-        {
-          while (!validationTimeout && Date.now() - startTime < waitTime)
-          {
-            try
+            const startTime = Date.now();
+            let response = '';
+            let validationTimeout = false;
+
+            // 设置超时时间
+            const timeoutPromise = new Promise((resolve) =>
             {
-              const { value, done } = await reader.read();
-              if (done) break;
-
-              const text = new TextDecoder().decode(value);
-              response += text;
-
-              // 检查是否包含Petoi设备标识
-              if (response.includes('Bittle') || response.includes('Nybble') || response.includes('Petoi') || response.includes('Chero'))
+              setTimeout(() =>
               {
-                // 提取设备型号信息用于控制台显示
-                const cleanResponse = response.replace(/[\r\n?]+/g, ' ').trim();
-                const modelInfo = cleanResponse.replace(/\s*\?\s*$/, '').trim();
-                console.log(getText("model") + ":", modelInfo);
+                validationTimeout = true;
+                resolve();
+              }, waitTime);
+            });
 
-                resolve(true);
-                return;
-              }
-
-              // 如果已经超过等待时间，停止等待
-              if (Date.now() - startTime >= waitTime)
-              {
-                break;
-              }
-            } catch (error)
+            // 等待回复或超时
+            const responsePromise = new Promise(async (resolve) =>
             {
-              console.warn("Error reading during validation:", error);
-              break;
+              while (!validationTimeout && Date.now() - startTime < waitTime)
+              {
+                try
+                {
+                  const { value, done } = await reader.read();
+                  if (done) break;
+
+                  const text = new TextDecoder().decode(value);
+                  response += text;
+
+                  // 检查是否包含Petoi设备标识
+                  if (response.includes('Bittle') || response.includes('Nybble') || response.includes('Petoi') || response.includes('Chero'))
+                  {
+                    // 提取设备型号信息用于控制台显示
+                    const cleanResponse = response.replace(/[\r\n?]+/g, ' ').trim();
+                    const modelInfo = cleanResponse.replace(/\s*\?\s*$/, '').trim();
+                    console.log(getText("model") + ":", modelInfo);
+
+                    resolve(true);
+                    return;
+                  }
+
+                  // 如果已经超过等待时间，停止等待
+                  if (Date.now() - startTime >= waitTime)
+                  {
+                    break;
+                  }
+                } catch (error)
+                {
+                  console.warn("Error reading during validation:", error);
+                  break;
+                }
+              }
+              resolve(false);
+            });
+
+            // 等待第一个完成的Promise
+            const result = await Promise.race([responsePromise, timeoutPromise]);
+
+            if (validationTimeout)
+            {
+              console.log(getText("serialValidationTimeout") + ` (attempt ${attempt}/${maxRetries})`);
+              if (attempt < maxRetries) {
+                console.log(`Retrying validation in 1 second...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+              }
+              return false;
+            }
+
+            if (result) {
+              console.log(`Validation successful on attempt ${attempt}`);
+              return true;
+            }
+
+            // 如果当前尝试失败且还有重试机会
+            if (attempt < maxRetries) {
+              console.log(`Validation failed on attempt ${attempt}, retrying...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+          } catch (error) {
+            console.warn(`Validation attempt ${attempt} failed:`, error);
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
-          resolve(false);
-        });
-
-        // 等待第一个完成的Promise
-        const result = await Promise.race([responsePromise, timeoutPromise]);
-
-        if (validationTimeout)
-        {
-          console.log(getText("serialValidationTimeout"));
-          return false;
         }
 
-        return result;
+        return false;
       } catch (error)
       {
         console.error(getText("serialValidationError"), error);
