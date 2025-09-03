@@ -21,7 +21,11 @@ boolean BTconnected = false;
 
 void BTConfirmRequestCallback(uint32_t numVal) {
   confirmRequestPending = true;
+  Serial.print("SSP PIN: ");
   Serial.println(numVal);
+  Serial.println("Auto-confirming SSP pairing...");
+  SerialBT.confirmReply(true);    // Auto-confirm pairing request
+  confirmRequestPending = false;
 }
 
 void BTAuthCompleteCallback(boolean success) {
@@ -88,7 +92,7 @@ void printToAllPorts(T text, bool newLine = true) {
 #endif
 #ifdef BT_SSP
   if (BTconnected)
-    SerialBT.println(text);
+    SerialBT.print(text);
 #endif
 #ifdef WEB_SERVER
   if (cmdFromWeb) {
@@ -103,5 +107,11 @@ void printToAllPorts(T text, bool newLine = true) {
     Serial2.println(text);
   PT(text);
   if (newLine)
+  {
     PTL();
+#ifdef BT_SSP
+    if (BTconnected)
+      SerialBT.println();
+#endif
+  }
 }

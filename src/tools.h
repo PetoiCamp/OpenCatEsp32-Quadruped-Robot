@@ -164,8 +164,8 @@ void FPS() {
   if (millis() - loopTimer < 1000)
     fps++;
   else {
-    PT("FPS:\t");
-    PTL(fps);
+    PTHL("FPS:", fps);
+    // PTL(fps);
     fps = 0;
     loopTimer = millis();
   }

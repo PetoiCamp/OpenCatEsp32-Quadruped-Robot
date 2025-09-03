@@ -33,7 +33,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);  // USB serial
   Serial.setTimeout(SERIAL_TIMEOUT);
-  //  Serial1.begin(115200); //second serial port
+  // Serial1.begin(115200); //second serial port
   while (Serial.available() && Serial.read())
     ;  // empty buffer
   initRobot();
@@ -73,8 +73,11 @@ void loop() {
 #endif
   reaction();
 
+  // Smart Bluetooth switching check
+  checkAndSwitchBluetoothMode();
+
 #ifdef WEB_SERVER
-  WebServerLoop();  // 处理异步Web请求
+  WebServerLoop();  // Handle asynchronous Web requests
 #endif
 }
 

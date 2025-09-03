@@ -623,14 +623,50 @@ bool readIMU() {
   bool updated = false;
   if (updateGyroQ && !(frame % imuSkip)) {
 #ifndef USE_WIRE1
-    while (cameraLockI2c)
-      delay(1);  // wait for the i2c bus to be released by the camera. potentially to cause dead lock with imu.
+    // Use FreeRTOS delay function and add timeout mechanism
+    unsigned long waitStart = millis();
+    const unsigned long maxWaitTime = 500; // Maximum wait time 500ms
+    
+    while (cameraLockI2c && updateGyroQ) {
+      if (millis() - waitStart > maxWaitTime) {
+        PTLF("Camera I2C lock timeout");
+        return false; // Timeout exit
+      }
+      vTaskDelay(1 / portTICK_PERIOD_MS);  // Use FreeRTOS delay function
+    }
 #endif
-    while (gestureLockI2c)
-      delay(1);  // wait for the i2c bus to be released by the gesture. potentially to cause dead lock with imu.
-    while (eepromLockI2c)
-      delay(1);  // wait for the i2c bus to be released by the EEPROM operations.
+    // Reuse existing timeout timer variable
+    waitStart = millis(); // Reset timeout timer
+    
+    while (gestureLockI2c && updateGyroQ) {
+      if (millis() - waitStart > maxWaitTime) {
+        PTLF("Gesture I2C lock timeout");
+        return false; // Timeout exit
+      }
+      vTaskDelay(1 / portTICK_PERIOD_MS);  // Use FreeRTOS delay function
+    }
+    
+    waitStart = millis(); // Reset timer
+    while (eepromLockI2c && updateGyroQ) {
+      if (millis() - waitStart > maxWaitTime) {
+        PTLF("EEPROM I2C lock timeout");
+        return false; // Timeout exit
+      }
+      vTaskDelay(1 / portTICK_PERIOD_MS);  // Use FreeRTOS delay function
+    }
+    
+    // If updateGyroQ became false during waiting, exit early
+    if (!updateGyroQ) {
+      return false;
+    }
     imuLockI2c = true;
+    
+    // Final check before IMU operations - exit if requested
+    if (!updateGyroQ) {
+      imuLockI2c = false;  // Release lock before exiting
+      return false;
+    }
+    
     // Get the stack high water mark
     // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(TASK_imu);
     // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(taskCalibrateImuUsingCore0_handle);
@@ -667,7 +703,7 @@ bool readIMU() {
     imuLockI2c = false;
     return updated;
   } else {
-    delay(1);  // to avoid the task to be blocked the wdt
+    vTaskDelay(1 / portTICK_PERIOD_MS);  // Use FreeRTOS delay function instead of delay()
     return false;
   }
 }
@@ -695,7 +731,7 @@ void getImuException() {
   // PTT(fabs(xyzReal[2] - previousXYZ[2]), '\t');
 
   if (fabs(ypr[2]) > 85) {  //  imuException = aaReal.z < 0;
-    if (mpuQ) {  // mpu is faster in detecting instant acceleration which may lead to false positive
+    if (mpuQ) {  // MPU is faster in detecting instant acceleration which may lead to false positive
       if (xyzReal[2] < 1)
         imuException = IMU_EXCEPTION_FLIPPED;  // flipped
     } else if (xyzReal[2] < -1)
@@ -705,14 +741,14 @@ void getImuException() {
   else if (ypr[1] < -50 || ypr[1] > 75)
     imuException = IMU_EXCEPTION_LIFTED;
   else if (!moduleDemoQ && fabs(xyzReal[2] - previousXYZ[2]) > thresZ * gFactor
-           && fabs(xyzReal[2]) > thresZ * gFactor)  // z direction shock)
+           && fabs(xyzReal[2]) > thresZ * gFactor)  // Z direction shock
     imuException = IMU_EXCEPTION_KNOCKED;
   else if (!moduleDemoQ
            && (  // not in demo mode
                (fabs(xyzReal[0] - previousXYZ[0]) > 4000 * gFactor
-                && fabs(xyzReal[0]) > thresX * gFactor)  // x direction shock
+                && fabs(xyzReal[0]) > thresX * gFactor)  // X direction shock
                || (fabs(xyzReal[1] - previousXYZ[1]) > 6000 * gFactor
-                   && fabs(xyzReal[1]) > thresY * gFactor)  // y direction shock
+                   && fabs(xyzReal[1]) > thresY * gFactor)  // Y direction shock
                )) {
     imuException = IMU_EXCEPTION_PUSHED;
   }
@@ -757,16 +793,77 @@ void getImuException() {
 long imuTime = 0;
 void taskIMU(void *parameter) {
   bool* running = (bool*)parameter;
+  PTHL("updateGyroQ", updateGyroQ);
+  PTHL("run para:", *running);
   
-  while (*running) {
-    if (millis() - imuTime > 5) {
-      imuUpdated = readIMU();
-      getImuException();
-      imuTime = millis();
-    } else
-      delay(1);  // to avoid the task to be blocked the wdt
+  // unsigned long lastDebugPrint = 0;
+  // const unsigned long debugInterval = 5000;  // print every 5 seconds
+  
+  while (*running && updateGyroQ) { // check pointer value and global variable
+    // periodic print debug information
+    // if (millis() - lastDebugPrint > debugInterval) {
+      // PTHL("Task running, updateGyroQ =", updateGyroQ);
+      // PTHL("*running =", *running);
+      // lastDebugPrint = millis();
+    // }
+    
+    // check exit condition - immediately exit loop
+    if (!(*running) || !updateGyroQ) {
+      PTHL("updateGyroQ =", updateGyroQ);
+      PTHL("*running =", *running);
+      PTLF("Exit condition detected in main loop");
+      break;
+    }
+    
+    // perform IMU read operation, add timeout detection
+    // unsigned long startTime = millis();
+    // const unsigned long maxBlockTime = 50;
+    
+    // Check exit condition before each operation
+    if (!(*running) || !updateGyroQ) {
+      PTHL("updateGyroQ =", updateGyroQ);
+      PTHL("*running =", *running);
+      PTLF("Exit condition detected before readIMU");
+      break;
+    }
+    
+    imuUpdated = readIMU();
+
+    // check exit condition before each operation
+    if (!(*running) || !updateGyroQ) {
+      PTHL("updateGyroQ =", updateGyroQ);
+      PTHL("*running =", *running);
+      PTLF("Exit condition detected after readIMU");
+      break;
+    }
+    
+    // if operation time is too long or exit condition is met, exit
+    // if (millis() - startTime > maxBlockTime || !(*running) || !updateGyroQ) {
+    //   PTHL("updateGyroQ =", updateGyroQ);
+    //   PTHL("*running =", *running);
+    //   PTLF("Operation timeout or exit condition detected after readIMU");
+    //   break;
+    // }
+    
+    getImuException();
+    imuTime = millis();
+    
+    // ensure task is not blocked
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+
+    // for checking the size of unused stack space
+    // vTaskDelay(50 / portTICK_PERIOD_MS);  
+    // Serial.println("Stack high water mark: " + String(uxTaskGetStackHighWaterMark(NULL)) + " bytes");
   }
-  PTLF("IMU task terminated for web coding");
+  
+  PTHL("before delete, updateGyroQ =", updateGyroQ);
+  PTHL("*running =", *running);
+  PTLF("IMU task exiting, calling vTaskDelete...");
+  
+  // ensure task can exit correctly
+  vTaskDelay(10 / portTICK_PERIOD_MS);   // Reduce delay to ensure fast exit
+  
+  // Force delete task
   vTaskDelete(NULL);
 }
 
@@ -803,15 +900,30 @@ void imuSetup() {
     beep(18, 50, 50, 6);
   previous_ypr[0] = ypr[0];
   
-  xTaskCreatePinnedToCore(taskIMU,  // task function
-                          "TaskIMU",  // name
-                          9000,  // task stack size​​: 8700 determined by uxTaskGetStackHighWaterMark()
-                          &updateGyroQ,  // parameters
-                          1,  // priority
-                          &TASK_imu,  // handle
-                          0);  // core
+  // ensure updateGyroQ is true
+  updateGyroQ = true;
+  
+  // Create IMU task
+  xTaskCreatePinnedToCore(taskIMU,        // task function
+                          "TaskIMU",      // task name
+                          1500,           // task stack size​​
+                          &updateGyroQ,   // parameters
+                          1,              // priority
+                          &TASK_imu,      // handle
+                          0);             // core
+  
+  // wait for task creation to complete
   delay(100);
-  TASK_imu = xTaskGetHandle("TaskIMU");
+  
+  // get task handle, for subsequent operations
+  if (TASK_imu == NULL) {
+    TASK_imu = xTaskGetHandle("TaskIMU");
+    if (TASK_imu == NULL) {
+      PTLF("Warning: Failed to get IMU task handle!");
+    } else {
+      PTLF("IMU task created successfully");
+    }
+  }
 
   // imuException = xyzReal[3] < 0;
 }

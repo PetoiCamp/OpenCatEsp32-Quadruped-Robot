@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "250818"  // YYMMDD
+#define DATE "250903"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -86,8 +86,8 @@ String uniqueName = "";
 // #define I2C_EEPROM_ADDRESS 0x54  // Address of i2c eeprom chip
 
 #define BIRTHMARK '@'  // Send '!' token to reset the birthmark in the EEPROM so that the robot will know to restart and reset
-#define BT_BLE  // toggle Bluetooth Low Energy (BLE）
-#define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
+#define BT_BLE  // for smartphone, toggle Bluetooth Low Energy (BLE）
+#define BT_SSP  // for computer, toggle Bluetooth Secure Simple Pairing (BT_SSP)
 // #define WEB_SERVER // toggle web server
 #ifndef VT
 #define GYRO_PIN  // toggle the Inertia Measurement Unit (IMU), i.e. the gyroscope
@@ -626,6 +626,28 @@ int balanceSlope[2] = {1, 1};  // roll, pitch
 #include "motion.h"
 #include "randomMind.h"
 #include "skill.h"
+
+// Bluetooth mode management variables and functions
+#define BLUETOOTH_MODE_DEFINED
+enum BluetoothMode {
+  BT_MODE_NONE = 0,
+  BT_MODE_SERVER = 1,
+  BT_MODE_CLIENT = 2,
+  BT_MODE_BOTH = 3
+};
+
+BluetoothMode currentBtMode = BT_MODE_NONE;
+BluetoothMode activeBtMode = BT_MODE_NONE;
+unsigned long btModeDecisionStartTime = 0;  // 30 second decision timer
+unsigned long btModeLastCheckTime = 0;      // 1 second check interval timer
+const unsigned long BT_MODE_CHECK_INTERVAL = 1000; // Check every second
+const unsigned long BT_MODE_DECISION_TIMEOUT = 30000; // 30 second decision timeout
+
+void initBluetoothModes();
+void checkAndSwitchBluetoothMode();
+void shutdownBleServer();
+void shutdownBleClient();
+
 #include "moduleManager.h"
 #ifdef WEB_SERVER
 #include "webServer.h"
@@ -688,12 +710,12 @@ void initRobot() {
   if (updateGyroQ)
     imuSetup();
 #endif
-#ifdef BT_BLE
-  bleSetup();
-#endif
-#ifdef BT_SSP
-  blueSspSetup();
-#endif
+// #ifdef BT_BLE
+//   bleSetup();
+// #endif
+// #ifdef BT_SSP
+//   blueSspSetup();
+// #endif
   servoSetup();
   lastCmd[0] = '\0';
   newCmd[0] = '\0';
@@ -723,9 +745,9 @@ void initRobot() {
 #endif
 
   QA();
-#ifdef BT_CLIENT
-  bleClientSetup();
-#endif
+  
+  // Bluetooth mode intelligent switching initialization
+  initBluetoothModes();
   tQueue = new TaskQueue();
   loadBySkillName("rest");  // must have to avoid memory crash. need to check why.
                             // allCalibratedPWM(currentAng); alone will lead to crash
@@ -742,4 +764,109 @@ void initRobot() {
   PTL("Ready!");
   beep(24, 50);
   idleTimer = millis();
+}
+
+// 蓝牙模式管理函数实现
+void initBluetoothModes() {
+  PTLF("Initializing Bluetooth modes...");
+  
+#if defined(BT_BLE) && defined(BT_CLIENT)
+  // If both modes are defined, enable intelligent switching
+  currentBtMode = BT_MODE_BOTH;
+  PTLF("Starting BLE Server...");
+  bleSetup();
+  delay(100);  // Give BLE server enough startup time
+  
+  PTLF("Starting BLE Client...");
+  bleClientSetup();
+  delay(100);  // Give BLE client enough startup time
+  
+  btModeDecisionStartTime = millis();  // Start 30 second decision timer
+  btModeLastCheckTime = millis();      // Initialize check interval timer
+  PTLF("Both BT modes started. Waiting for connection...");
+  
+#elif defined(BT_BLE)
+  // Only start BLE server
+  currentBtMode = BT_MODE_SERVER;
+  activeBtMode = BT_MODE_SERVER;
+  bleSetup();
+  PTLF("BLE Server mode activated");
+  
+#elif defined(BT_CLIENT)
+  // Only start BLE client
+  currentBtMode = BT_MODE_CLIENT;
+  activeBtMode = BT_MODE_CLIENT;
+  bleClientSetup();
+  PTLF("BLE Client mode activated");
+  
+#else
+  currentBtMode = BT_MODE_NONE;
+  PTLF("No Bluetooth mode enabled");
+#endif
+
+#ifdef BT_SSP
+  blueSspSetup();
+#endif
+}
+
+void checkAndSwitchBluetoothMode() {
+  if (currentBtMode != BT_MODE_BOTH || activeBtMode != BT_MODE_NONE) {
+    return; // No need to switch or already switched
+  }
+  
+  unsigned long currentTime = millis();
+  
+  // Check 30 second decision timeout (using independent timer)
+  if (currentTime - btModeDecisionStartTime > BT_MODE_DECISION_TIMEOUT) {
+    // After timeout, default to closing BLE client, keeping server mode
+    PTLF("BT mode decision timeout, defaulting to Server mode");
+    shutdownBleClient();
+    activeBtMode = BT_MODE_SERVER;
+    return;
+  }
+  
+  // Check 1 second check interval
+  if (currentTime - btModeLastCheckTime < BT_MODE_CHECK_INTERVAL) {
+    return;
+  }
+  btModeLastCheckTime = currentTime;  // Only update check interval timer
+
+#ifdef BT_CLIENT
+  // Check if BLE client has connection
+  if (btConnected) {
+    PTLF("BLE Client connected, shutting down Server mode");
+    shutdownBleServer();
+    activeBtMode = BT_MODE_CLIENT;
+    return;
+  }
+#endif
+  
+#if defined BT_BLE
+  // Check if BLE server has connection to mobile app
+  if (deviceConnected) {
+    PTLF("BLE Server connected, shutting down Client mode");
+    shutdownBleClient();
+    activeBtMode = BT_MODE_SERVER;
+    return;
+  }
+#endif
+}
+
+void shutdownBleServer() {
+#ifdef BT_BLE
+  if (pServer) {
+    pServer->getAdvertising()->stop();
+    PTLF("BLE Server advertising stopped");
+  }
+  deviceConnected = false;
+#endif
+}
+
+void shutdownBleClient() {
+#ifdef BT_CLIENT
+  btConnected = false;
+  doConnect = false;
+  doScan = false;
+  PTLF("BLE Client scanning stopped");
+#endif
 }

@@ -1,15 +1,12 @@
 //Generated Date: Fri, 20 Sep 2024 04:06:24 GMT by Jason
 #include <BLEDevice.h>
+#include "bleCommon.h"
 
 #define DEVICE_NAME "BBC"
 
-#define SERVICE_UUID_STR "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_RX_STR "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_TX_STR "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
-
-static BLEUUID serviceUUID(SERVICE_UUID_STR);
-static BLEUUID CHARACTERISTIC_UUID_RX(CHARACTERISTIC_UUID_RX_STR);
-static BLEUUID CHARACTERISTIC_UUID_TX(CHARACTERISTIC_UUID_TX_STR);
+static BLEUUID serviceUUID(BLE_SERVICE_UUID);
+static BLEUUID CHARACTERISTIC_UUID_RX(BLE_CHARACTERISTIC_UUID_RX);
+static BLEUUID CHARACTERISTIC_UUID_TX(BLE_CHARACTERISTIC_UUID_TX);
 static boolean doConnect = false;
 static boolean btConnected = false;
 static boolean doScan = false;
@@ -55,16 +52,36 @@ static void btPetoiNotifyCallback(BLERemoteCharacteristic* pBLERemoteCharacteris
   btReceiveDone = true;
 }
 
+// Add client connection state debounce variables
+unsigned long lastClientConnectionChange = 0;
+const unsigned long CLIENT_CONNECTION_DEBOUNCE = 1000; // 1 second debounce
+
 class btPetoiClientCallback : public BLEClientCallbacks {
   void onConnect(BLEClient* pclient) {
+    unsigned long currentTime = millis();
+    
+    // Debounce processing
+    if (currentTime - lastClientConnectionChange < CLIENT_CONNECTION_DEBOUNCE) {
+      return;
+    }
+    
     PetoiBtConnected();
+    lastClientConnectionChange = currentTime;
   }
 
   void onDisconnect(BLEClient* pclient) {
+    unsigned long currentTime = millis();
+    
+    // Debounce processing
+    if (currentTime - lastClientConnectionChange < CLIENT_CONNECTION_DEBOUNCE) {
+      return;
+    }
+    
     btConnected = false;
     btReceiveDone = false;
     btRxLoad = "";
     PetoiBtDisconnected();
+    lastClientConnectionChange = currentTime;
   }
 };
 
@@ -126,10 +143,12 @@ void PetoiBtStartScan() {
   BLEDevice::init("");
   BLEScan* pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new PetoiAdvertisedDeviceCallbacks());
-  pBLEScan->setInterval(1349);
-  pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
+  
+  // Optimize scan parameters to improve connection stability
+  pBLEScan->setInterval(2000);    // Increase scan interval, reduce interference
+  pBLEScan->setWindow(1000);      // Increase scan window, improve discovery probability
+  pBLEScan->setActiveScan(true);   // Keep active scanning
+  pBLEScan->start(10, false);     // Increase scan time to 10 seconds
 }
 
 void checkBtScan() {
