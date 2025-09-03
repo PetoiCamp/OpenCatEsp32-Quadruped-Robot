@@ -24,20 +24,16 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include "bleCommon.h"
 
-#define HOLD_TIME 1500
-#define CONNECTION_ATTEMPT 2
+#define HOLD_TIME 3000        // Increase to 3 seconds, improve connection stability
+#define CONNECTION_ATTEMPT 3  // Increase reconnection attempts
 BLEServer *pServer = NULL;
 BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
-// See the following for generating UUIDs:
-// https://www.uuidgenerator.net/
-
-#define SERVICE_UUID_APP "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"            // UART service UUID
-#define CHARACTERISTIC_UUID_RX_APP "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"  // receive
-#define CHARACTERISTIC_UUID_TX_APP "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"  // transmit
+// BLE UUID definitions are now in bleCommon.h
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
@@ -109,19 +105,19 @@ void bleSetup() {
   pServer->setCallbacks(new MyServerCallbacks());
 
   // Create the BLE Service
-  BLEService *pService = pServer->createService(SERVICE_UUID_APP);
+  BLEService *pService = pServer->createService(BLE_SERVICE_UUID);
 
   // Create a BLE Characteristic
   pTxCharacteristic =
     pService->createCharacteristic(
-      CHARACTERISTIC_UUID_TX_APP,
+      BLE_CHARACTERISTIC_UUID_TX,
       BLECharacteristic::PROPERTY_NOTIFY);
 
   pTxCharacteristic->addDescriptor(new BLE2902());
 
   BLECharacteristic *pRxCharacteristic =
     pService->createCharacteristic(
-      CHARACTERISTIC_UUID_RX_APP,
+      BLE_CHARACTERISTIC_UUID_RX,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
 
   pRxCharacteristic->setCallbacks(new MyCallbacks());
@@ -141,13 +137,25 @@ void bleWrite(String buff) {
   }
 }
 
+// Add connection state debounce variables
+unsigned long lastConnectionChange = 0;
+const unsigned long CONNECTION_DEBOUNCE = 1000; // 1 second debounce
+
 void detectBle() {
+  unsigned long currentTime = millis();
+  
+  // Debounce processing: avoid frequent connection state changes
+  if (currentTime - lastConnectionChange < CONNECTION_DEBOUNCE) {
+    return;
+  }
+  
   // disconnecting
   if (!deviceConnected && oldDeviceConnected) {
     delay(50);                    // give the bluetooth stack the chance to get things ready
     pServer->startAdvertising();  // restart advertising
     Serial.println("Bluetooth BLE disconnected!");
     oldDeviceConnected = deviceConnected;
+    lastConnectionChange = currentTime;  // Record state change time
   }
   // connecting
   if (deviceConnected && !oldDeviceConnected) {
@@ -155,12 +163,16 @@ void detectBle() {
     Serial.println("Bluetooth BLE connected!");
     oldDeviceConnected = deviceConnected;
     delay(HOLD_TIME);
-    // for (byte i = 0; i < CONNECTION_ATTEMPT; i++) {// send the keywords a few times on connection so that the app knows it's a Petoi device
-    pTxCharacteristic->setValue("Petoi Bittle");
-    pTxCharacteristic->notify();
-    // delay(100);
-    // }
+    
+    // Send connection confirmation message
+    for (byte i = 0; i < CONNECTION_ATTEMPT; i++) {
+      pTxCharacteristic->setValue("Petoi Bittle");
+      pTxCharacteristic->notify();
+      delay(100);
+    }
+    
     token = 'd';
     bleWrite(String(T_PAUSE));
+    lastConnectionChange = currentTime;  // Record state change time
   }
 }

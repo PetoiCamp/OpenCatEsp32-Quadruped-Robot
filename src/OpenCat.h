@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "250818"  // YYMMDD
+#define DATE "250903"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -86,8 +86,8 @@ String uniqueName = "";
 // #define I2C_EEPROM_ADDRESS 0x54  // Address of i2c eeprom chip
 
 #define BIRTHMARK '@'  // Send '!' token to reset the birthmark in the EEPROM so that the robot will know to restart and reset
-#define BT_BLE  // toggle Bluetooth Low Energy (BLE）
-#define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
+#define BT_BLE  // for smartphone, toggle Bluetooth Low Energy (BLE）
+#define BT_SSP  // for computer, toggle Bluetooth Secure Simple Pairing (BT_SSP)
 // #define WEB_SERVER // toggle web server
 #ifndef VT
 #define GYRO_PIN  // toggle the Inertia Measurement Unit (IMU), i.e. the gyroscope
@@ -609,12 +609,7 @@ int balanceSlope[2] = {1, 1};  // roll, pitch
 #include "sound.h"
 #include <Wire.h>
 #include "configConstants.h"
-#ifdef BT_BLE
-#include "bleUart.h"
-#endif
-#ifdef BT_CLIENT
-#include "bleClient.h"
-#endif
+#include "bluetoothManager.h"
 #include "io.h"
 #ifdef GYRO_PIN
 #include "imu.h"
@@ -684,16 +679,12 @@ void initRobot() {
     }
   }
 #endif
+
 #ifdef GYRO_PIN
   if (updateGyroQ)
     imuSetup();
 #endif
-#ifdef BT_BLE
-  bleSetup();
-#endif
-#ifdef BT_SSP
-  blueSspSetup();
-#endif
+
   servoSetup();
   lastCmd[0] = '\0';
   newCmd[0] = '\0';
@@ -723,17 +714,16 @@ void initRobot() {
 #endif
 
   QA();
-#ifdef BT_CLIENT
-  bleClientSetup();
-#endif
+  
+  // Bluetooth mode intelligent switching initialization
+  initBluetoothModes();
   tQueue = new TaskQueue();
   loadBySkillName("rest");  // must have to avoid memory crash. need to check why.
                             // allCalibratedPWM(currentAng); alone will lead to crash
   delay(500);
   
-
-
   initModuleManager();
+
 #ifdef GYRO_PIN
   // readIMU(); // ypr is slow when starting up. leave enough time between IMU initialization and this reading
   if (!moduleDemoQ && updateGyroQ)

@@ -1,5 +1,8 @@
+#ifndef TOOLS_H
+#define TOOLS_H
+
 // Serial Print macro directive abbreviations
-  // Simple macro directives
+// Simple macro directives
 #define PT(s)             Serial.print(s)          // Serial print
 #define PTD(s, format)    Serial.print(s, format)  // Formatted serial print
 #define PTL(s)            Serial.println(s)        // Serial print plus newline
@@ -164,8 +167,8 @@ void FPS() {
   if (millis() - loopTimer < 1000)
     fps++;
   else {
-    PT("FPS:\t");
-    PTL(fps);
+    PTHL("FPS:", fps);
+    // PTL(fps);
     fps = 0;
     loopTimer = millis();
   }
@@ -213,3 +216,4 @@ char *strGet(char *s, int i) {  //allow negative index
     return s;
   }
 }
+#endif

@@ -146,6 +146,7 @@ void initModule(char moduleCode) {
 #ifdef CAMERA
     case EXTENSION_CAMERA:
       {
+        PTLF("Setting updateGyroQ to false...");
         updateGyroQ = false;
         i2cDetect(Wire);
 // #if defined BiBoard_V1_0 && !defined NYBBLE
@@ -428,12 +429,27 @@ void readSignal() {
   read_infrared();  //  newCmdIdx = 1
 #endif
   read_serial();  //  newCmdIdx = 2
-#ifdef BT_BLE
-  detectBle();  //  newCmdIdx = 3;
-  readBle();
+  
+  // Smart Bluetooth mode reading
+// #if defined(BT_BLE) && defined(BT_CLIENT)
+//   // In dual mode, determine which one to read based on currently active mode
+//   if (activeBtMode == BT_MODE_SERVER || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+//     detectBle();  //  newCmdIdx = 3;
+//     readBle();
+//   }
+//   if (activeBtMode == BT_MODE_CLIENT || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+//     readBleClient();
+//   }
+#if defined(BT_BLE)
+  if (activeBtMode == BT_MODE_SERVER || activeBtMode == BT_MODE_NONE) {
+    detectBle();  //  newCmdIdx = 3;
+    readBle();
+  }
 #endif
-#ifdef BT_CLIENT
-  readBleClient();
+#if defined(BT_CLIENT)
+  if (activeBtMode == BT_MODE_CLIENT || activeBtMode == BT_MODE_NONE) {
+    readBleClient();
+  }
 #endif
 // #ifdef WEB_SERVER
 //   if (webServerConnected)

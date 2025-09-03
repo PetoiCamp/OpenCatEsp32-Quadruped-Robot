@@ -8,78 +8,6 @@
 // This example creates a bridge between Serial and Classical Bluetooth (SSP with authentication)
 // and also demonstrate that SerialBT has the same functionalities as a normal Serial
 
-#ifdef BT_SSP
-#include "BluetoothSerial.h"
-
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
-BluetoothSerial SerialBT;
-boolean confirmRequestPending = true;
-boolean BTconnected = false;
-
-void BTConfirmRequestCallback(uint32_t numVal) {
-  confirmRequestPending = true;
-  Serial.println(numVal);
-}
-
-void BTAuthCompleteCallback(boolean success) {
-  confirmRequestPending = false;
-  if (success) {
-    BTconnected = true;
-    Serial.println("SSP Pairing success!!");
-  } else {
-    BTconnected = false;
-    Serial.println("SSP Pairing failed, rejected by user!!");
-  }
-}
-
-void blueSspSetup() {
-  SerialBT.enableSSP();
-  SerialBT.onConfirmRequest(BTConfirmRequestCallback);
-  SerialBT.onAuthComplete(BTAuthCompleteCallback);
-  char *sspName = getDeviceName("_SSP");
-  PTHL("SSP:\t", sspName);
-  SerialBT.begin(sspName);  // Bluetooth device name
-  delete[] sspName;         // Free the allocated memory
-  Serial.println("The SSP device is started, now you can pair it with Bluetooth!");
-}
-
-// void readBlueSSP() {
-//   if (confirmRequestPending)
-//   {
-//     if (Serial.available())
-//     {
-//       int dat = Serial.read();
-//       if (dat == 'Y' || dat == 'y')
-//       {
-//         SerialBT.confirmReply(true);
-//       }
-//       else
-//       {
-//         SerialBT.confirmReply(false);
-//       }
-//     }
-//   }
-//   else
-//   {
-//     if (Serial.available())
-//     {
-//       SerialBT.write(Serial.read());
-//     }
-//     if (SerialBT.available())
-//     {
-//       Serial.write(SerialBT.read());
-//     }
-//     delay(20);
-//   }
-// }
-
-// end of Richard Li's code
-
-#endif
-
 template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
 #ifdef BT_BLE
@@ -87,8 +15,11 @@ void printToAllPorts(T text, bool newLine = true) {
     bleWrite(String(text));
 #endif
 #ifdef BT_SSP
-  if (BTconnected)
-    SerialBT.println(text);
+  if (BTconnected) {
+    SerialBT.print(text);
+    if (newLine)
+      SerialBT.println();
+  }
 #endif
 #ifdef WEB_SERVER
   if (cmdFromWeb) {
@@ -99,9 +30,17 @@ void printToAllPorts(T text, bool newLine = true) {
     }
   }
 #endif
-  if (moduleActivatedQ[0])  // serial2
-    Serial2.println(text);
+  if (moduleActivatedQ[0]) { // serial2
+    Serial2.print(text);
+    if (newLine)
+    {
+      Serial2.println();
+    }
+  }
+
   PT(text);
   if (newLine)
+  {
     PTL();
+  }
 }

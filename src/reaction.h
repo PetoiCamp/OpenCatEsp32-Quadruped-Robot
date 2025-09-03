@@ -505,31 +505,73 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
           if (newCmd[0] == C_GYRO_CALIBRATE)
           {
             shutServos();
+            PTLF("Setting updateGyroQ to false...");
             updateGyroQ = false;
             if (newCmd[1] != C1_GYRO_CALIBRATE_IMMEDIATELY)
             {
               PTLF("\nPut the robot FLAT on the table and don't touch it during calibration.");
               beep(8, 500, 500, 5);
               beep(15, 500, 500, 1);
-              // Calibrate IMU using core 0 (reboot is no longer required)
-              // xTaskNotifyGive(taskCalibrateImuUsingCore0_handle);  // Send notification to this task on Core 0
             }
-            // Create calibration task to be run on Core 0
+            
+            // Wait for IMU task to terminate completely
+            if (TASK_imu != NULL) {
+              PTLF("Waiting for IMU task to terminate before calibration...");
+              // Wait for IMU task to terminate
+              while (eTaskGetState(TASK_imu) != eDeleted) {
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+              }
+            }
+            
+            // Create calibration task to run on core 0
             xTaskCreatePinnedToCore(
                 taskCalibrateImuUsingCore0,         // Task function
                 "taskCalibrateImuUsingCore0",       // Task name
-                1800,                               // Task stack size: 1560 bytes determined by uxTaskGetStackHighWaterMark() in bool readIMU()
+                1800,                               // Task stack size
                 NULL,                               // Task parameters
                 1,                                  // Task priority
                 &taskCalibrateImuUsingCore0_handle, // Task handle
                 0                                   // Task core number to run on
             );
-            // Calibrate IMU using core 0 (reboot is no longer required)
-            // xTaskNotifyGive(taskCalibrateImuUsingCore0_handle);  // Send notification to this task on Core 0
-            while (!updateGyroQ)
-              delay(1);
-            delay(3000); // allow the imu to stablize after calibration
+            
+            // Wait for updateGyroQ to be re-set to true, indicating calibration completion
+            unsigned long waitStart = millis();
+            const unsigned long maxWaitTime = 10000; // Maximum waiting time 10 seconds
+            
+            while (!updateGyroQ) {
+              if (millis() - waitStart > maxWaitTime) {
+                PTLF("Timeout waiting for calibration to complete. Forcing continuation.");
+                updateGyroQ = true; // Force continuation
+                break;
+              }
+              vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
+            
+            PTLF("Calibration completed, allowing IMU to stabilize...");
+            delay(3000); // Allow IMU to stabilize after calibration
             beep(18, 50, 50, 6);
+
+             // create IMU task
+             xTaskCreatePinnedToCore(taskIMU,        // Task function
+              "TaskIMU",                             // Task name
+              1500,                                  // Task stack size
+              &updateGyroQ,                          // Task parameters
+              1,                                     // Task priority
+              &TASK_imu,                             // Task handle
+              0);                                    // Task core number to run on
+
+            // Wait for task creation to complete
+            delay(100);
+            
+            // Get task handle, for subsequent operations
+            if (TASK_imu == NULL) {
+              TASK_imu = xTaskGetHandle("TaskIMU");
+              if (TASK_imu == NULL) {
+                PTLF("Warning: Failed to get IMU task handle!");
+              } else {
+                PTLF("IMU task created successfully");
+              }
+            }
           }
           else
           {
@@ -956,10 +998,10 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               // delay(5);
             } while (pch != NULL);
             
-            // 释放动态分配的内存
+            // Release dynamically allocated memory
             delete[] cmdForParsing;
             
-            // 对于校准命令，在循环结束后打印校准值
+            // For calibration commands, print calibration values after the loop
             if (token == T_SERVO_CALIBRATE) {
               printToAllPorts(range2String(DOF));
               printToAllPorts(list2String(servoCalib));
@@ -1115,7 +1157,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 if (cameraPrintQ && cameraTaskActiveQ) {
                   printToAllPorts('=');
                   showRecognitionResult(xCoord, yCoord, width, height);
-                  PTL();
+                  //PTL();
                   // printToAllPorts(token);
                   if (cameraPrintQ == 1)
                     cameraPrintQ = 0;  // if the command is XCp, the camera will print the result only once
@@ -1540,16 +1582,19 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
   }
 #endif
 #ifdef CAMERA
-  if (cameraPrintQ == 2)
-  {
-    showRecognitionResult(xCoord, yCoord, width, height);
-    PTL();
-    FPS();
+  if (cameraPrintQ == 2 && cameraTaskActiveQ) {
+    // PTHL("xCoord = ", xCoord);
+    // PTHL("lastXcoord = ", lastXcoord);
+    // PTHL("yCoord = ", yCoord);
+    // PTHL("lastYcoord = ", lastYcoord);
+    if (xCoord != lastXcoord || yCoord != lastYcoord)
+    {
+      showRecognitionResult(xCoord, yCoord, width, height);
 #ifdef WEB_SERVER
-    sendCameraData(xCoord, yCoord, width, height); // 发送摄像头数据到WebSocket客户端
+      sendCameraData(xCoord, yCoord, width, height); // Send camera data to WebSocket client
 #endif
-  }
-  else if (!cameraTaskActiveQ)
+    }
+  } else if (!cameraTaskActiveQ)
 #endif
   {
     delay(1);  // avoid triggering WDT
