@@ -431,20 +431,25 @@ void readSignal() {
   read_serial();  //  newCmdIdx = 2
   
   // Smart Bluetooth mode reading
-#if defined(BT_BLE) && defined(BT_CLIENT)
-  // In dual mode, determine which one to read based on currently active mode
-  if (activeBtMode == BT_MODE_SERVER || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+// #if defined(BT_BLE) && defined(BT_CLIENT)
+//   // In dual mode, determine which one to read based on currently active mode
+//   if (activeBtMode == BT_MODE_SERVER || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+//     detectBle();  //  newCmdIdx = 3;
+//     readBle();
+//   }
+//   if (activeBtMode == BT_MODE_CLIENT || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+//     readBleClient();
+//   }
+#if defined(BT_BLE)
+  if (activeBtMode == BT_MODE_SERVER || activeBtMode == BT_MODE_NONE) {
     detectBle();  //  newCmdIdx = 3;
     readBle();
   }
-  if (activeBtMode == BT_MODE_CLIENT || (activeBtMode == BT_MODE_NONE && currentBtMode == BT_MODE_BOTH)) {
+#endif
+#if defined(BT_CLIENT)
+  if (activeBtMode == BT_MODE_CLIENT || activeBtMode == BT_MODE_NONE) {
     readBleClient();
   }
-#elif defined(BT_BLE)
-  detectBle();  //  newCmdIdx = 3;
-  readBle();
-#elif defined(BT_CLIENT)
-  readBleClient();
 #endif
 // #ifdef WEB_SERVER
 //   if (webServerConnected)
