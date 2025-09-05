@@ -26,8 +26,8 @@
 #include <BLE2902.h>
 #include "bleCommon.h"
 
-#define HOLD_TIME 3000        // Increase to 3 seconds, improve connection stability
-#define CONNECTION_ATTEMPT 3  // Increase reconnection attempts
+#define HOLD_TIME 1500        // Increase to 3 seconds (3000), improve connection stability  
+// #define CONNECTION_ATTEMPT 3  // Increase reconnection attempts
 BLEServer *pServer = NULL;
 BLECharacteristic *pTxCharacteristic;
 bool deviceConnected = false;
@@ -165,11 +165,11 @@ void detectBle() {
     delay(HOLD_TIME);
     
     // Send connection confirmation message
-    for (byte i = 0; i < CONNECTION_ATTEMPT; i++) {
-      pTxCharacteristic->setValue("Petoi Bittle");
-      pTxCharacteristic->notify();
-      delay(100);
-    }
+    // for (byte i = 0; i < CONNECTION_ATTEMPT; i++) {
+    pTxCharacteristic->setValue("Petoi Bittle");
+    pTxCharacteristic->notify();
+    //   delay(100);
+    // }
     
     token = 'd';
     bleWrite(String(T_PAUSE));

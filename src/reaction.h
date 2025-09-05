@@ -1583,10 +1583,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
 #endif
 #ifdef CAMERA
   if (cameraPrintQ == 2 && cameraTaskActiveQ) {
-    // PTHL("xCoord = ", xCoord);
-    // PTHL("lastXcoord = ", lastXcoord);
-    // PTHL("yCoord = ", yCoord);
-    // PTHL("lastYcoord = ", lastYcoord);
     if (xCoord != lastXcoord || yCoord != lastYcoord)
     {
       showRecognitionResult(xCoord, yCoord, width, height);

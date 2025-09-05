@@ -26,7 +26,7 @@
 #define GESTURE                   // for Gesture module
 #define CAMERA                    // for Mu Vision camera
 #define QUICK_DEMO                // for quick demo
-// #define ROBOT_ARM                 // for attaching head clip arm
+#define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
 
 void setup() {
@@ -61,13 +61,13 @@ void loop() {
     if (moduleList[moduleIndex] == EXTENSION_QUICK_DEMO)
       quickDemo();
 #endif
-    //  readHuman();
+    // readHuman();
   }
-  //  //— generate behavior by fusing all sensors and instruction
-  //  decision();
+  //— generate behavior by fusing all sensors and instruction
+  // decision();
 
-  //  //— action
-  //  //playSound();
+   //— action
+   // playSound();
 #ifdef NEOPIXEL_PIN
   playLight();
 #endif

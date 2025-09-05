@@ -37,13 +37,6 @@ int lastXcoord = -1, lastYcoord = -1;
 int imgRangeX = 100;               // the frame size 0~100 on X and Y direction
 int imgRangeY = 100;
 
-extern TaskHandle_t TASK_imu;
-extern bool updateGyroQ;
-extern bool imuLockI2c;
-extern bool cameraLockI2c;
-extern bool gestureLockI2c;
-extern bool eepromLockI2c;
-
 // #ifdef BiBoard_V1_0
 // #define USE_WIRE1  // use the Grove UART as the Wire1, which is independent of Wire used by the main devices, such as
                    // the gyroscope and EEPROM.
@@ -169,7 +162,6 @@ bool cameraSetup() {
 
   // Acquire camera I2C lock and wait for other I2C operations to complete
 #ifndef USE_WIRE1
-  //cameraLockI2c = true;  // Signal that camera wants to use I2C bus
   while (
 #ifdef GYRO_PIN
       imuLockI2c ||  // wait for the imu to release lock
@@ -233,11 +225,6 @@ bool cameraSetup() {
 #endif
   fps = 0;
   loopTimer = millis();
-
-  // Release camera I2C lock
-// #ifndef USE_WIRE1
-//   cameraLockI2c = false;
-// #endif
 
   return cameraSetupSuccessful;
 }
@@ -359,9 +346,6 @@ int coords[3];
 void taskReadCamera(void *par) {
   // PTHL("cameraTaskActiveQ = ", cameraTaskActiveQ);
   while (cameraTaskActiveQ) {
-    // PTHL("imuLockI2c = ", imuLockI2c);
-    // PTHL("gestureLockI2c = ", gestureLockI2c);
-    // PTHL("eepromLockI2c = ", eepromLockI2c);
 #ifndef USE_WIRE1
     while (
 #ifdef GYRO_PIN
@@ -423,9 +407,7 @@ void read_camera() {
     cameraTaskActiveQ = 1;
     PTLF("Camera task activated.");
   }
-  // long waitingTime = millis();
-  // while (!detectedObjectQ && millis() - waitingTime < 20)
-  //   delay(1); // wait for the camera to detect an object in another core
+
   if (detectedObjectQ) {
     cameraBehavior(xCoord, yCoord, width);
     detectedObjectQ = false;
@@ -703,10 +685,6 @@ void groveVisionSetup() {
     gestureLockI2c = false;
     eepromLockI2c = false;
     imuLockI2c = false;  // Also release IMU's own lock
-    
-    // Set exit flag
-    // PTLF("Setting updateGyroQ to false...");
-    // updateGyroQ = false;
     
     // Give IMU task more time to handle exit conditions
     delay(50);  // Increase delay time

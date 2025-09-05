@@ -627,7 +627,7 @@ bool readIMU() {
     unsigned long waitStart = millis();
     const unsigned long maxWaitTime = 500; // Maximum wait time 500ms
     
-    while (cameraLockI2c && updateGyroQ) {
+    while (cameraLockI2c) {
       if (millis() - waitStart > maxWaitTime) {
         PTLF("Camera I2C lock timeout");
         return false; // Timeout exit
@@ -638,7 +638,7 @@ bool readIMU() {
     // Reuse existing timeout timer variable
     waitStart = millis(); // Reset timeout timer
     
-    while (gestureLockI2c && updateGyroQ) {
+    while (gestureLockI2c) {
       if (millis() - waitStart > maxWaitTime) {
         PTLF("Gesture I2C lock timeout");
         return false; // Timeout exit
@@ -647,7 +647,7 @@ bool readIMU() {
     }
     
     waitStart = millis(); // Reset timer
-    while (eepromLockI2c && updateGyroQ) {
+    while (eepromLockI2c) {
       if (millis() - waitStart > maxWaitTime) {
         PTLF("EEPROM I2C lock timeout");
         return false; // Timeout exit
@@ -667,13 +667,6 @@ bool readIMU() {
       return false;
     }
     
-    // Get the stack high water mark
-    // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(TASK_imu);
-    // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(taskCalibrateImuUsingCore0_handle);
-
-    // Serial.print("IMU task stack : ");
-    // Serial.print(stackHighWaterMark);
-    // Serial.println(" bytes");
 #ifdef IMU_ICM42670
     if (icmQ) {
       updated = true;
@@ -793,13 +786,14 @@ void getImuException() {
 long imuTime = 0;
 void taskIMU(void *parameter) {
   bool* running = (bool*)parameter;
-  PTHL("updateGyroQ", updateGyroQ);
-  PTHL("run para:", *running);
+  // PTHL("updateGyroQ", updateGyroQ);
+  // PTHL("run para:", *running);
   
   // unsigned long lastDebugPrint = 0;
   // const unsigned long debugInterval = 5000;  // print every 5 seconds
   
-  while (*running && updateGyroQ) { // check pointer value and global variable
+  // while (*running && updateGyroQ) { // check pointer value and global variable
+  while (*running) { // check pointer value and global variable
     // periodic print debug information
     // if (millis() - lastDebugPrint > debugInterval) {
       // PTHL("Task running, updateGyroQ =", updateGyroQ);
@@ -808,19 +802,15 @@ void taskIMU(void *parameter) {
     // }
     
     // check exit condition - immediately exit loop
-    if (!(*running) || !updateGyroQ) {
+    if (!(*running)) {
       PTHL("updateGyroQ =", updateGyroQ);
       PTHL("*running =", *running);
       PTLF("Exit condition detected in main loop");
       break;
     }
     
-    // perform IMU read operation, add timeout detection
-    // unsigned long startTime = millis();
-    // const unsigned long maxBlockTime = 50;
-    
     // Check exit condition before each operation
-    if (!(*running) || !updateGyroQ) {
+    if (!(*running)) {
       PTHL("updateGyroQ =", updateGyroQ);
       PTHL("*running =", *running);
       PTLF("Exit condition detected before readIMU");
@@ -830,20 +820,12 @@ void taskIMU(void *parameter) {
     imuUpdated = readIMU();
 
     // check exit condition before each operation
-    if (!(*running) || !updateGyroQ) {
+    if (!(*running)) {
       PTHL("updateGyroQ =", updateGyroQ);
       PTHL("*running =", *running);
       PTLF("Exit condition detected after readIMU");
       break;
     }
-    
-    // if operation time is too long or exit condition is met, exit
-    // if (millis() - startTime > maxBlockTime || !(*running) || !updateGyroQ) {
-    //   PTHL("updateGyroQ =", updateGyroQ);
-    //   PTHL("*running =", *running);
-    //   PTLF("Operation timeout or exit condition detected after readIMU");
-    //   break;
-    // }
     
     getImuException();
     imuTime = millis();
