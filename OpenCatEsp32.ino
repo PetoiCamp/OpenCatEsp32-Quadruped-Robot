@@ -26,7 +26,7 @@
 #define GESTURE                   // for Gesture module
 #define CAMERA                    // for Mu Vision camera
 #define QUICK_DEMO                // for quick demo
-#define ROBOT_ARM                 // for attaching head clip arm
+// #define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
 
 void setup() {

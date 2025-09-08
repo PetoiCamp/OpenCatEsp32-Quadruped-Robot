@@ -516,11 +516,27 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             
             // Wait for IMU task to terminate completely
             if (TASK_imu != NULL) {
-              PTLF("Waiting for IMU task to terminate before calibration...");
-              // Wait for IMU task to terminate
-              while (eTaskGetState(TASK_imu) != eDeleted) {
-                vTaskDelay(100 / portTICK_PERIOD_MS);
+              eTaskState taskState = eTaskGetState(TASK_imu);
+              PTHL("Task state:", taskState);
+            
+              if (taskState != eDeleted) {
+                // Wait for task to terminate naturally
+                PTLF("Waiting for IMU task to terminate...");
+                unsigned long startTime = millis();
+                const unsigned long timeout = 3000; // 3 second timeout
+                
+                // Wait for timeout
+                while (TASK_imu != NULL && (millis() - startTime) <= timeout) {
+                  delay(200);
+                }
+                
+                // Handle timeout
+                if (TASK_imu != NULL) {
+                  PTLF("IMU task termination timeout - set task handle to NULL");
+                  TASK_imu = NULL;    // Set task handle to NULL
+                }
               }
+                delay(50);  // Wait for IMU task to fully terminate
             }
             
             // Create calibration task to run on core 0
