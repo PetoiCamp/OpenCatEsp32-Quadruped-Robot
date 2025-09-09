@@ -86,9 +86,10 @@ String uniqueName = "";
 // #define I2C_EEPROM_ADDRESS 0x54  // Address of i2c eeprom chip
 
 #define BIRTHMARK '@'  // Send '!' token to reset the birthmark in the EEPROM so that the robot will know to restart and reset
-#define BT_BLE  // for smartphone, toggle Bluetooth Low Energy (BLE）
-#define BT_SSP  // for computer, toggle Bluetooth Secure Simple Pairing (BT_SSP)
-// #define WEB_SERVER // toggle web server
+#define BT_BLE  // toggle Bluetooth Low Energy (BLE）
+#define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
+// #define WIFI_MANAGER  // toggle WiFi Manager. It should be always off for now
+#define WEB_SERVER // toggle web server
 #ifndef VT
 #define GYRO_PIN  // toggle the Inertia Measurement Unit (IMU), i.e. the gyroscope
 #endif
@@ -661,6 +662,7 @@ void initRobot() {
   PT(buzzerVolume);
   PTL("/10");
 #ifdef WEB_SERVER
+#if defined(WIFI_MANAGER)
   if (rebootForWifiManagerQ)
   {
     startWifiManager();
@@ -678,6 +680,12 @@ void initRobot() {
       // );
     }
   }
+#else
+  if (rebootForWifiManagerQ)
+  {
+    connectWifiFromStoredConfig();
+  }
+#endif
 #endif
 
 #ifdef GYRO_PIN

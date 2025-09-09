@@ -1,7 +1,12 @@
 #include "esp32-hal.h"
 #include <WiFi.h>
 #include <WebSocketsServer.h> // download at https://github.com/Links2004/arduinoWebSockets/
+#ifdef WIFI_MANAGER
 #include <WiFiManager.h> // download at https://github.com/tzapu/WiFiManager
+#endif
+#ifndef WIFI_MANAGER
+#include <esp_wifi.h>
+#endif
 
 #include <map>
 #include <ArduinoJson.h>
@@ -548,6 +553,44 @@ bool connectWifi(String ssid, String password)
   }
 }
 
+#ifndef WIFI_MANAGER
+// 当未启用WIFI_MANAGER时，尝试读取并使用之前保存的WiFi信息连接
+bool connectWifiFromStoredConfig()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+
+  wifi_config_t cfg;
+  memset(&cfg, 0, sizeof(cfg));
+  if (esp_wifi_get_config(WIFI_IF_STA, &cfg) != ESP_OK) {
+    WEB_ERROR_F("Failed to get stored WiFi config");
+    return false;
+  }
+
+  String savedSsid = String(reinterpret_cast<char*>(cfg.sta.ssid));
+  String savedPassword = String(reinterpret_cast<char*>(cfg.sta.password));
+
+  if (savedSsid.length() == 0) {
+    WEB_WARN_F("No stored SSID found");
+    return false;
+  }
+
+  webServerConnected = connectWifi(savedSsid, savedPassword);
+
+  if (webServerConnected) {
+    printToAllPorts("Successfully connected Wifi to IP Address: " + WiFi.localIP().toString());
+    // 启动WebSocket服务器
+    webSocket.begin();
+    webSocket.onEvent(handleWebSocketEvent);
+    WEB_INFO_F("WebSocket server started");
+  } else {
+    WEB_ERROR_F("Timeout: Fail to connect web server!");
+  }
+  return webServerConnected;
+}
+#endif
+
+#ifdef WIFI_MANAGER
 void startWifiManager() {
 #ifdef I2C_EEPROM_ADDRESS
   i2c_eeprom_write_byte(EEPROM_WIFI_MANAGER, false);
@@ -581,6 +624,7 @@ void startWifiManager() {
   config.putBool("WifiManager", webServerConnected);
 #endif
 }
+#endif
 
 void resetWifiManager() {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
