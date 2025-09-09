@@ -167,18 +167,6 @@ bool cameraSetup() {
     return false;
   }
 
-  // Acquire camera I2C lock and wait for other I2C operations to complete
-#ifndef USE_WIRE1
-  //cameraLockI2c = true;  // Signal that camera wants to use I2C bus
-  while (
-#ifdef GYRO_PIN
-      imuLockI2c ||  // wait for the imu to release lock
-#endif
-      gestureLockI2c ||  // wait for the gesture to release lock
-      eepromLockI2c)     // wait for the EEPROM operations to complete
-    delay(1);
-#endif
-
 #ifdef NYBBLE
   initPars = nybblePars;
   sizePars = sizeof(nybblePars) / sizeof(int8_t);
@@ -199,6 +187,18 @@ bool cameraSetup() {
     imgRangeY = 240;
   }
 #endif
+#endif
+    
+    // Acquire camera I2C lock and wait for other I2C operations to complete
+#ifndef USE_WIRE1
+    cameraLockI2c = true;  // Signal that camera wants to use I2C bus
+while (
+#ifdef GYRO_PIN
+    imuLockI2c ||  // wait for the imu to release lock
+#endif
+    gestureLockI2c ||  // wait for the gesture to release lock
+    eepromLockI2c)     // wait for the EEPROM operations to complete
+  delay(1);
 #endif
 
 #ifdef USE_WIRE1
@@ -234,11 +234,10 @@ bool cameraSetup() {
   fps = 0;
   loopTimer = millis();
 
-  // Release camera I2C lock
-// #ifndef USE_WIRE1
-//   cameraLockI2c = false;
-// #endif
-
+//   Release camera I2C lock
+ #ifndef USE_WIRE1
+   cameraLockI2c = false;
+ #endif
   return cameraSetupSuccessful;
 }
 
@@ -423,9 +422,7 @@ void read_camera() {
     cameraTaskActiveQ = 1;
     PTLF("Camera task activated.");
   }
-  // long waitingTime = millis();
-  // while (!detectedObjectQ && millis() - waitingTime < 20)
-  //   delay(1); // wait for the camera to detect an object in another core
+
   if (detectedObjectQ) {
     cameraBehavior(xCoord, yCoord, width);
     detectedObjectQ = false;
@@ -696,46 +693,15 @@ void groveVisionSetup() {
   // End the TASK_imu task when activating Grove Vision AI V2
 #ifdef GYRO_PIN
   if (TASK_imu != NULL) {
-    // PTHL("Initial task state:", eTaskGetState(TASK_imu));
-    
-    // Ensure release all locks that may block IMU task
-    cameraLockI2c = false;
-    gestureLockI2c = false;
-    eepromLockI2c = false;
-    imuLockI2c = false;  // Also release IMU's own lock
-    
-    // Set exit flag
-    // PTLF("Setting updateGyroQ to false...");
-    // updateGyroQ = false;
-    
-    // Give IMU task more time to handle exit conditions
-    delay(50);  // Increase delay time
-    PTHL("After 50ms, updateGyroQ =", updateGyroQ);
-    
-    // Simplify task state check
-    if (TASK_imu != NULL) {
-      eTaskState taskState = eTaskGetState(TASK_imu);
-      PTHL("Task state:", taskState);
-    
-      if (taskState != eDeleted) {
-        // Wait for task to terminate naturally
-        PTLF("Waiting for IMU task to terminate...");
-        unsigned long startTime = millis();
-        const unsigned long timeout = 3000; // 3 second timeout
-        
-        // Wait for timeout
-        while (TASK_imu != NULL && (millis() - startTime) <= timeout) {
-          delay(200);
-        }
-        
-        // Handle timeout
-        if (TASK_imu != NULL) {
-          PTLF("IMU task termination timeout - continuing with camera setup");
-          TASK_imu = NULL;    // Set task handle to NULL
-        }
+      while (eTaskGetState(TASK_imu) != eDeleted) {
+          if(eTaskGetState(TASK_imu)==eIdle){
+              TASK_imu = NULL;
+              break;
+          }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
       }
-    }
-    delay(50);  // Wait for IMU task to fully terminate
+    // PTHL("Initial task state:", eTaskGetState(TASK_imu));
+    // Ensure release all locks that may block IMU task
   }
 #endif
   // Adjust I2C clock frequency, reduce to improve stability

@@ -61,13 +61,13 @@ void loop() {
     if (moduleList[moduleIndex] == EXTENSION_QUICK_DEMO)
       quickDemo();
 #endif
-    //  readHuman();
+    // readHuman();
   }
-  //  //— generate behavior by fusing all sensors and instruction
-  //  decision();
+  //— generate behavior by fusing all sensors and instruction
+  // decision();
 
-  //  //— action
-  //  //playSound();
+   //— action
+   // playSound();
 #ifdef NEOPIXEL_PIN
   playLight();
 #endif

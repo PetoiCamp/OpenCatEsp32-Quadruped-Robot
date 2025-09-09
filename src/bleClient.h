@@ -145,10 +145,10 @@ void PetoiBtStartScan() {
   pBLEScan->setAdvertisedDeviceCallbacks(new PetoiAdvertisedDeviceCallbacks());
   
   // Optimize scan parameters to improve connection stability
-  pBLEScan->setInterval(2000);    // Increase scan interval, reduce interference
-  pBLEScan->setWindow(1000);      // Increase scan window, improve discovery probability
+  pBLEScan->setInterval(1000);    // Increase scan interval, reduce interference to 2000
+  pBLEScan->setWindow(500);      // Increase scan window, improve discovery probability to 1000
   pBLEScan->setActiveScan(true);   // Keep active scanning
-  pBLEScan->start(10, false);     // Increase scan time to 10 seconds
+  pBLEScan->start(5, false);     // Increase scan time to 10 seconds
 }
 
 void checkBtScan() {

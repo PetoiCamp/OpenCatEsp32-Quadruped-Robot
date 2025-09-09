@@ -667,13 +667,6 @@ bool readIMU() {
       return false;
     }
     
-    // Get the stack high water mark
-    // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(TASK_imu);
-    // uint32_t stackHighWaterMark = uxTaskGetStackHighWaterMark(taskCalibrateImuUsingCore0_handle);
-
-    // Serial.print("IMU task stack : ");
-    // Serial.print(stackHighWaterMark);
-    // Serial.println(" bytes");
 #ifdef IMU_ICM42670
     if (icmQ) {
       updated = true;
@@ -793,64 +786,28 @@ void getImuException() {
 long imuTime = 0;
 void taskIMU(void *parameter) {
   bool* running = (bool*)parameter;
-  PTHL("updateGyroQ", updateGyroQ);
-  PTHL("run para:", *running);
+  // PTHL("updateGyroQ", updateGyroQ);
+  // PTHL("run para:", *running);
   
   // unsigned long lastDebugPrint = 0;
   // const unsigned long debugInterval = 5000;  // print every 5 seconds
   
-  while (*running && updateGyroQ) { // check pointer value and global variable
+  while (*running) { // check pointer value and global variable
     // periodic print debug information
     // if (millis() - lastDebugPrint > debugInterval) {
       // PTHL("Task running, updateGyroQ =", updateGyroQ);
       // PTHL("*running =", *running);
       // lastDebugPrint = millis();
     // }
-    
-    // check exit condition - immediately exit loop
-    if (!(*running) || !updateGyroQ) {
-      PTHL("updateGyroQ =", updateGyroQ);
-      PTHL("*running =", *running);
-      PTLF("Exit condition detected in main loop");
-      break;
+    if (millis() - imuTime > 5) {
+      imuUpdated = readIMU();
+      getImuException();
+      imuTime = millis();
+    } else
+    {
+      // ensure task is not blocked
+      vTaskDelay(1 / portTICK_PERIOD_MS);
     }
-    
-    // perform IMU read operation, add timeout detection
-    // unsigned long startTime = millis();
-    // const unsigned long maxBlockTime = 50;
-    
-    // Check exit condition before each operation
-    if (!(*running) || !updateGyroQ) {
-      PTHL("updateGyroQ =", updateGyroQ);
-      PTHL("*running =", *running);
-      PTLF("Exit condition detected before readIMU");
-      break;
-    }
-    
-    imuUpdated = readIMU();
-
-    // check exit condition before each operation
-    if (!(*running) || !updateGyroQ) {
-      PTHL("updateGyroQ =", updateGyroQ);
-      PTHL("*running =", *running);
-      PTLF("Exit condition detected after readIMU");
-      break;
-    }
-    
-    // if operation time is too long or exit condition is met, exit
-    // if (millis() - startTime > maxBlockTime || !(*running) || !updateGyroQ) {
-    //   PTHL("updateGyroQ =", updateGyroQ);
-    //   PTHL("*running =", *running);
-    //   PTLF("Operation timeout or exit condition detected after readIMU");
-    //   break;
-    // }
-    
-    getImuException();
-    imuTime = millis();
-    
-    // ensure task is not blocked
-    vTaskDelay(1 / portTICK_PERIOD_MS);
-
     // for checking the size of unused stack space
     // vTaskDelay(50 / portTICK_PERIOD_MS);  
     // Serial.println("Stack high water mark: " + String(uxTaskGetStackHighWaterMark(NULL)) + " bytes");

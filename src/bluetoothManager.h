@@ -22,7 +22,6 @@ enum BluetoothMode {
   BT_MODE_BOTH = 3
 };
 
-// BluetoothMode currentBtMode = BT_MODE_NONE;
 BluetoothMode activeBtMode = BT_MODE_NONE;
 unsigned long btModeDecisionStartTime = 0;  // 30 second decision timer
 unsigned long btModeLastCheckTime = 0;      // 1 second check interval timer
@@ -109,7 +108,6 @@ void initBluetoothModes() {
   
 #if defined(BT_BLE) && defined(BT_CLIENT)
   // If both modes are defined, enable intelligent switching
-  // currentBtMode = BT_MODE_BOTH;
   PTLF("Starting BLE Server...");
   bleSetup();
   delay(100);  // Give BLE server enough startup time
@@ -124,20 +122,16 @@ void initBluetoothModes() {
   
 #elif defined(BT_BLE)
   // Only start BLE server
-  // currentBtMode = BT_MODE_SERVER;
   activeBtMode = BT_MODE_SERVER;
   bleSetup();
   PTLF("BLE Server mode activated");
   
 #elif defined(BT_CLIENT)
   // Only start BLE client
-  // currentBtMode = BT_MODE_CLIENT;
   activeBtMode = BT_MODE_CLIENT;
   bleClientSetup();
   PTLF("BLE Client mode activated");
-  
 #else
-  // currentBtMode = BT_MODE_NONE;
   PTLF("No Bluetooth mode enabled");
 #endif
 
@@ -147,7 +141,7 @@ void initBluetoothModes() {
 }
 
 void checkAndSwitchBluetoothMode() {
-  if (activeBtMode != BT_MODE_NONE) {    // currentBtMode != BT_MODE_BOTH  
+  if (activeBtMode != BT_MODE_NONE) {  
     return; // No need to switch or already switched
   }
   
