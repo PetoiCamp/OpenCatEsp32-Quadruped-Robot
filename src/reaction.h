@@ -520,7 +520,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               PTLF("Waiting for IMU task to terminate before calibration...");
               // Wait for IMU task to terminate
               while (eTaskGetState(TASK_imu) != eDeleted) {
-                  if(eTaskGetState(TASK_imu)==eIdle){
+                  if(eTaskGetState(TASK_imu)== eReady){
                       TASK_imu = NULL;
                       break;
                   }

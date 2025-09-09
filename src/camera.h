@@ -694,7 +694,8 @@ void groveVisionSetup() {
 #ifdef GYRO_PIN
   if (TASK_imu != NULL) {
       while (eTaskGetState(TASK_imu) != eDeleted) {
-          if(eTaskGetState(TASK_imu)==eIdle){
+          PTHL("task state:", eTaskGetState(TASK_imu));
+          if(eTaskGetState(TASK_imu)== eReady){
               TASK_imu = NULL;
               break;
           }
