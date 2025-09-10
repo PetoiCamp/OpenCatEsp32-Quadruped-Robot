@@ -1,4 +1,8 @@
+#ifdef BiBoard_V1_0
+#define PIR_PIN ANALOG2
+#else 
 #define PIR_PIN ANALOG1
+#endif
 bool previousPIR = false;
 
 void createPirTask() {  //this is an example task
