@@ -432,13 +432,13 @@ void readSignal() {
   
   // Smart Bluetooth mode reading
 #if defined(BT_BLE)
-  if (activeBtMode == BT_MODE_SERVER || activeBtMode == BT_MODE_NONE) {
+  if (activeBtMode == BT_MODE_SERVER) {    // activeBtMode == BT_MODE_NONE
     detectBle();  //  newCmdIdx = 3;
     readBle();
   }
 #endif
 #if defined(BT_CLIENT)
-  if (activeBtMode == BT_MODE_CLIENT || activeBtMode == BT_MODE_NONE) {
+  if (activeBtMode == BT_MODE_CLIENT) {    // activeBtMode == BT_MODE_NONE
     readBleClient();
   }
 #endif

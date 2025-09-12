@@ -73,9 +73,6 @@ void loop() {
 #endif
   reaction();
 
-  // Smart Bluetooth switching check
-  checkAndSwitchBluetoothMode();
-
 #ifdef WEB_SERVER
   WebServerLoop();  // Handle asynchronous Web requests
 #endif
