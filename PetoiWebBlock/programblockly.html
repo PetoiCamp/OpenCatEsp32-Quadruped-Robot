@@ -86,9 +86,11 @@
         <!-- 添加串口通信相关的HTML结构 -->
         <div id="serialContainer">
           <div class="area-header">
-            <span class="area-title" id="serialOutputTitle" data-i18n="serialOutput">Serial Monitor</span>
-            <div class="serial-port-info" id="serialPortInfo"
-              style="display: none; font-size: 12px; color: #666; margin-top: 2px;"></div>
+            <div class="title-section" style="display: flex; flex-direction: column; flex: 1;">
+              <span class="area-title" id="serialOutputTitle" data-i18n="serialOutput">Serial Monitor</span>
+              <div class="serial-port-info" id="serialPortInfo"
+                style="display: none; font-size: inherit; color: white; margin-top: 4px;"></div>
+            </div>
             <div class="button-group">
               <button onclick="openSerialPort()" class="serial-button" id="openSerialBtn"
                 data-i18n="serialConnect">Connect Serial Port</button>
@@ -3332,8 +3334,9 @@ Generated at: ${now.toISOString()}
           const displayName = getSerialPortDisplayName(port);
           // 保持标题为"Serial Monitor"
           serialTitle.textContent = getText("serialOutput");
-          // 在下一行显示端口名称
-          serialPortInfo.textContent = displayName;
+          // 在下一行显示端口名称，截断路径字符
+          const truncatedName = displayName.split(/[.\\/]/).pop();
+          serialPortInfo.textContent = truncatedName;
           serialPortInfo.style.display = 'block';
         }
 
