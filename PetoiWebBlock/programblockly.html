@@ -267,6 +267,9 @@
           console.log(`Updated Quick Connect button to show IP: ${currentDeviceIP}`);
         }
 
+        // 连接成功时重置WiFi对话框标志
+        hasShownWifiDialog = false;
+
         return true;
       }
 
@@ -287,6 +290,9 @@
         {
           console.log(`Successfully connected with configured IP: ${currentDeviceIP}`);
         }
+
+        // 连接成功时重置WiFi对话框标志
+        hasShownWifiDialog = false;
 
         // 更新Quick Connect按钮状态
         updateQuickConnectButtonState(currentDeviceIP);
@@ -1124,7 +1130,7 @@
         {
           console.log(getText("detectedInvalidIP").replace('{ip}', blockIP));
         }
-        quickConnect().then(() =>
+        handleWifiConnection(false).then(() =>
         {
           // quick connect完成后，延迟1秒再执行runCode
           setTimeout(() =>
@@ -2511,6 +2517,7 @@ Generated at: ${now.toISOString()}
     // 设备IP地址
     let currentDeviceIP = '192.168.4.1'; // 默认IP地址
     let isGettingIP = false; // 标志是否正在获取IP地址
+    let hasShownWifiDialog = false; // 标志是否已经显示过WiFi配置对话框
 
     // 配置文件相关
     let config = {
@@ -3602,7 +3609,8 @@ Generated at: ${now.toISOString()}
       }
     }
 
-    async function quickConnect()
+    // WiFi连接处理函数（内部使用）
+    async function handleWifiConnection(forceShowDialog = false)
     {
       // 检查串口是否已连接
       if (!port)
@@ -3625,7 +3633,7 @@ Generated at: ${now.toISOString()}
           {
             // 如果配置的IP地址也连接失败，显示WiFi配置对话框
             console.log('Both serial and configured IP failed, showing WiFi config dialog');
-            showWifiConfigDialog();
+            showWifiConfigDialog(forceShowDialog);
             return; // 显示WiFi配置界面后退出
           }
         }
@@ -3634,8 +3642,14 @@ Generated at: ${now.toISOString()}
       // 如果串口已连接，尝试发送WiFi命令获取IP地址
       if (writer)
       {
-        await sendWifiCommand();
+        await sendWifiCommandInternal(forceShowDialog);
       }
+    }
+
+    async function quickConnect()
+    {
+      // Quick Connect总是强制显示WiFi配置对话框（如果需要）
+      await handleWifiConnection(true);
     }
 
     function closeWifiDialog()
@@ -3646,13 +3660,13 @@ Generated at: ${now.toISOString()}
       if (overlay) overlay.remove();
     }
 
-    // 发送WiFi命令获取IP地址
-    async function sendWifiCommand()
+    // 发送WiFi命令获取IP地址（内部使用）
+    async function sendWifiCommandInternal(forceShowDialog = false)
     {
       if (!writer)
       {
         console.log(getText('noSerialWriterAvailable'));
-        showWifiConfigDialog();
+        showWifiConfigDialog(forceShowDialog);
         return Promise.reject(new Error('No serial writer available'));
       }
 
@@ -3694,11 +3708,13 @@ Generated at: ${now.toISOString()}
             {
               // 如果没有获取到IP地址或获取到的是默认AP模式IP，显示WiFi配置界面
               console.log(getText('noValidIPReceived'));
-              showWifiConfigDialog();
+              showWifiConfigDialog(forceShowDialog);
               resolve(); // 即使没有获取到IP也resolve，让程序继续执行
             } else
             {
               if (showDebug) console.log(getText('successfullyAcquiredIPAddress') + ': ' + currentDeviceIP);
+              // 成功获取IP地址后重置WiFi对话框标志，允许下次失败时再次显示
+              hasShownWifiDialog = false;
               resolve();
             }
           }, 3000); // 等待3秒
@@ -3709,18 +3725,37 @@ Generated at: ${now.toISOString()}
         isGettingIP = false;
         console.error('Failed to send WiFi command:', error);
         // 发送失败时显示WiFi配置界面
-        showWifiConfigDialog();
+        showWifiConfigDialog(forceShowDialog);
         return Promise.reject(error);
       }
     }
 
-    // 显示WiFi配置对话框
-    function showWifiConfigDialog()
+    // 发送WiFi命令获取IP地址（公共接口）
+    async function sendWifiCommand()
     {
+      await sendWifiCommandInternal(false); // 默认不强制显示对话框
+    }
+
+    // 显示WiFi配置对话框
+    function showWifiConfigDialog(forceShow = false)
+    {
+      // 如果不是强制显示，检查是否已经显示过WiFi配置对话框
+      if (!forceShow && hasShownWifiDialog)
+      {
+        if (showDebug) console.log('WiFi配置对话框已在本次会话中显示过，跳过显示');
+        return;
+      }
+
       // 检查是否已经存在对话框，避免重复创建
       if (document.querySelector('.wifi-dialog'))
       {
         return;
+      }
+
+      // 只有在非强制显示时才标记已经显示过WiFi配置对话框
+      if (!forceShow)
+      {
+        hasShownWifiDialog = true;
       }
 
       // 创建遮罩层
@@ -3734,7 +3769,7 @@ Generated at: ${now.toISOString()}
       dialog.innerHTML = `
         <h3>${getText("wifiConfig")}</h3>
         <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-          ${getText("wifiConfigDescription") || "Please enter your WiFi credentials to connect the robot to your network."}
+          ${getText("wifiConfigDescription")}
         </p>
         <input type="text" id="ssidInput" placeholder="${getText("ssidPlaceholder")}" autocomplete="off">
         <input type="password" id="passwordInput" placeholder="${getText("passwordPlaceholder")}" autocomplete="off">
