@@ -201,6 +201,8 @@ const TRANSLATIONS = {
     // 积木文本 - 音乐
     "playNoteMessage": "播放音符 %1 持续 %2 拍",
     "playMelodyMessage": "播放旋律 %1\n后延时 %2 秒",
+    "playToneListMessage": "播放音调列表 %1 后延时 %2 秒",
+    "playToneListTooltip": "输入音调和时长列表，格式：音调,时长,音调,时长...",
 
     // 积木文本 - 数学
     "mathRandomMessage": "随机数 %1 到 %2 %3",
@@ -700,6 +702,8 @@ const TRANSLATIONS = {
     // Block text - Music
     "playNoteMessage": "Play note %1 for %2 beat",
     "playMelodyMessage": "Play Melody %1\nthen delay %2 sec",
+    "playToneListMessage": "Play tone list %1 then delay %2 sec",
+    "playToneListTooltip": "Enter tone and duration list, format: tone,duration,tone,duration...",
 
     // Block text - Math
     "mathRandomMessage": "pick random %1 to %2 %3",
@@ -1205,6 +1209,8 @@ const TRANSLATIONS = {
     // ブロックテキスト - 音楽
     "playNoteMessage": "音符 %1 を %2 拍子分再生",
     "playMelodyMessage": "メロディー %1 を再生\n後 %2 秒待機",
+    "playToneListMessage": "音調リスト %1 を再生し %2 秒待機",
+    "playToneListTooltip": "音調と時長リストを入力、形式：音調,時長,音調,時長...",
 
     // アクションオプション
     "stand": "立つ",
