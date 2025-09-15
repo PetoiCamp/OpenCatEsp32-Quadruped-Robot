@@ -734,8 +734,18 @@ void initRobot() {
 
 #ifdef GYRO_PIN
   // readIMU(); // ypr is slow when starting up. leave enough time between IMU initialization and this reading
-  if (!moduleDemoQ && updateGyroQ)
+  if (!moduleDemoQ && updateGyroQ){
+    delay(500);
+    // Wait for IMU readings to converge before checking for exceptions
+    if (imuException != 0) {
+      waitForImuConvergence();
+      // Re-read IMU data and check for exceptions after convergence
+      readIMU();
+      getImuException();
+    }
+    print6Axis();
     tQueue->addTask((imuException) ? T_SERVO_CALIBRATE : T_REST, "");
+  }
 #endif
   PTL("Ready!");
   beep(24, 50);
