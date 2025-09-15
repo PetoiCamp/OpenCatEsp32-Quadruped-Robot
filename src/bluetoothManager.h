@@ -123,15 +123,6 @@ void initBluetoothModes() {
 #endif
   
 #if defined(BT_BLE) && defined(BT_CLIENT)
-  // If both modes are defined, enable intelligent switching
-  PTLF("Starting BLE Server...");
-  bleSetup();
-  delay(200);  // 增加启动时间，避免与WiFi冲突
-  
-  PTLF("Starting BLE Client...");
-  bleClientSetup();
-  delay(200);  // 增加启动时间，避免与WiFi冲突
-  
   btModeDecisionStartTime = millis();  // Start 3 second decision timer
   btModeLastCheckTime = millis();      // Initialize check interval timer
   // PTLF("Both BT modes started. Waiting for connection...");
@@ -160,6 +151,12 @@ void initBluetoothModes() {
 }
 
 void checkAndSwitchBluetoothMode() {
+#ifdef BT_CLIENT
+  PTLF("Starting BLE Client...");
+  bleClientSetup();
+  delay(200);  // 增加启动时间，避免与WiFi冲突
+#endif
+
   unsigned long currentTime = millis();
   
   // Check 3 second decision timeout (using independent timer)
@@ -172,7 +169,6 @@ void checkAndSwitchBluetoothMode() {
 #endif
       {
         PTLF("BLE Client connected, shutting down Server mode");
-        shutdownBleServer();
         activeBtMode = BT_MODE_CLIENT;
         return;
       }
@@ -196,9 +192,25 @@ void checkAndSwitchBluetoothMode() {
     currentTime = millis();
   }
 
-  // After timeout, default to closing BLE client, keeping server mode
+  // After timeout, shut down client mode and start server mode
+#ifdef BT_CLIENT
+  PTLF("Shutting down BLE Client...");
   shutdownBleClient();
+  delay(500); // 给BLE堆栈更多时间完成清理
+  
+  // 完全重新初始化BLE设备以切换到Server模式
+  PTLF("Deinitializing BLE device...");
+  BLEDevice::deinit(false); // 去初始化BLE设备，但保留内存
+  delay(500); // 等待去初始化完成
+#endif
+
+#ifdef BT_BLE
+  PTLF("Starting BLE Server...");
+  bleSetup();
+  delay(200);  // 增加启动时间，避免与WiFi冲突
+#endif
   activeBtMode = BT_MODE_SERVER;
+
   return;
 }
 
