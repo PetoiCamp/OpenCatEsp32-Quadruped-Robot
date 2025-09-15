@@ -20,8 +20,13 @@ void read_backTouch() {
   //stats();
   int touchPadIdx = backTouchID();
   // PTL(touchPadIdx);
+
   if (touchPadIdx) {
     if (prevTouch != touchPadIdx) {  // || millis() - lastTouchEvent > 500) {  // if the touch is different or a repeatitive touch interval is longer than 0.5 second
+      if(prevTouch == -1){ // avoid head motion if backtouch is not connected
+        prevTouch = touchPadIdx;
+        return;
+      }
       prevTouch = touchPadIdx;
       PTHL("Touched:", touchLocation[touchPadIdx - 1]);
       beep(touchPadIdx * 2 + 15, 100);

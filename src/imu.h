@@ -572,8 +572,8 @@ void print6Axis() {
 #ifdef IMU_ICM42670
   if (icmQ) {
 #ifdef PRINT_ACCELERATION
-    sprintf(buffer, "ICM:%6.1f%6.1f%6.1f%7.1f%7.1f%7.1f\t",  //
-            icm.a_real[0], icm.a_real[1], icm.a_real[2], -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
+    sprintf(buffer, "ICM:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f\t",  //
+            icm.a_real[0] * GRAVITY, icm.a_real[1] * GRAVITY, icm.a_real[2] * GRAVITY, -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
 #else
     sprintf(buffer, "ICM%7.1f%7.1f%7.1f\t", -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
 #endif
@@ -583,7 +583,7 @@ void print6Axis() {
 #ifdef IMU_MPU6050
   if (mpuQ) {
 #ifdef PRINT_ACCELERATION
-    sprintf(buffer, "MCU:%6.1f%6.1f%6.1f%7.1f%7.1f%7.1f",  // 7x6 = 42
+    sprintf(buffer, "MCU:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f",  // 7x6 = 42
             mpu.a_real[0], mpu.a_real[1], mpu.a_real[2], -mpu.ypr[0], mpu.ypr[1], mpu.ypr[2]);  //, aaWorld.z);
 #else
     sprintf(buffer, "MCU%7.1f%7.1f%7.1f", -mpu.ypr[0], mpu.ypr[1], mpu.ypr[2]);
@@ -672,8 +672,10 @@ bool readIMU() {
       updated = true;
       icm.getImuGyro();
       for (byte i = 0; i < 3; i++) {
-        icm.a_real[i] *= GRAVITY;
-        xyzReal[i] = icm.a_real[i];
+        // ICM42670's a_real is already in g units from transformIMUDataWithOffset()
+        // Multiply by GRAVITY to match the expected scale (10.0 ≈ 1g)
+        // Don't modify icm.a_real[i] directly to avoid cumulative multiplication
+        xyzReal[i] = icm.a_real[i] * GRAVITY;
         ypr[i] = icm.ypr[i];
       }
       // Negate yaw to match polar coordinate convention (positive = counterclockwise)
@@ -699,6 +701,112 @@ bool readIMU() {
     vTaskDelay(1 / portTICK_PERIOD_MS);  // Use FreeRTOS delay function instead of delay()
     return false;
   }
+}
+
+// Wait for IMU readings to converge before evaluating exceptions
+void waitForImuConvergence() {
+  if (!updateGyroQ) return;
+  
+  const float YPR_THRESHOLD = 0.2;      // Degrees threshold for ypr convergence
+  const float XYZ_THRESHOLD = 0.1;      // G-force threshold for acceleration convergence  
+  const int MAX_ITERATIONS = 500;       // Maximum iterations to prevent infinite loop
+  const int MIN_STABLE_READINGS = 5;    // Increased to 5 for better stability
+  
+  float prev_ypr[3] = {0, 0, 0};
+  float prev_xyz[3] = {0, 0, 0};
+  int stable_count = 0;
+  int iteration = 0;
+  
+  PTL("Waiting for IMU convergence...");
+  PTH("Initial EEPROM lock state: ", eepromLockI2c);
+  PTH("Initial camera lock state: ", cameraLockI2c);
+  PTH("Initial gesture lock state: ", gestureLockI2c);
+  
+  // Wait for taskIMU to start providing stable data
+  // No need to lock I2C since we're not directly accessing IMU hardware
+  PTL("Waiting for taskIMU to provide stable data...");
+  
+  // Initial reading from taskIMU processed data
+  // Wait for taskIMU to update data at least once
+  unsigned long waitStart = millis();
+  while (!imuUpdated && (millis() - waitStart) < 1000) {
+    delay(10);  // Wait for taskIMU to update
+  }
+  
+  if (!imuUpdated) {
+    PTL("Warning: taskIMU data not ready, using current values");
+  }
+  
+  // Get initial values from taskIMU processed data
+  for (int i = 0; i < 3; i++) {
+    prev_ypr[i] = ypr[i];
+    prev_xyz[i] = xyzReal[i];
+  }
+  
+  while (iteration < MAX_ITERATIONS) {
+    delay(20);  // Wait for taskIMU to update data
+    
+    // Wait for taskIMU to provide new data
+    bool newDataAvailable = false;
+    unsigned long dataWaitStart = millis();
+    while (!newDataAvailable && (millis() - dataWaitStart) < 50) {
+      if (imuUpdated) {  // taskIMU sets this flag when new data is available
+        newDataAvailable = true;
+      } else {
+        delay(1);  // Wait for taskIMU to update
+      }
+    }
+    
+    // Check if we got new data from taskIMU
+    if (newDataAvailable) {
+      bool converged = true;
+      print6Axis();
+      
+      // Calculate overall ypr difference using vector distance
+      float ypr_diff = sqrt(pow(ypr[0] - prev_ypr[0], 2) + 
+                           pow(ypr[1] - prev_ypr[1], 2) + 
+                           pow(ypr[2] - prev_ypr[2], 2));
+      
+      // Calculate overall xyz difference using vector distance  
+      float xyz_diff = sqrt(pow(xyzReal[0] - prev_xyz[0], 2) + 
+                           pow(xyzReal[1] - prev_xyz[1], 2) + 
+                           pow(xyzReal[2] - prev_xyz[2], 2));
+      
+      // Print convergence info right after IMU data, no newline
+      PTH("\t\t\t\t\t\tYPR diff: ", ypr_diff);
+      PTH(", XYZ diff: ", xyz_diff);
+      PTH(", Remaining: ", MAX_ITERATIONS - iteration);
+      PTL("");
+      
+      // Check convergence based on overall vector differences
+      if (ypr_diff > YPR_THRESHOLD || xyz_diff > XYZ_THRESHOLD) {
+        converged = false;
+      }
+      
+      if (converged) {
+        stable_count++;
+        if (stable_count >= MIN_STABLE_READINGS) {
+          PTL("IMU converged successfully");
+          break;
+        }
+      } else {
+        stable_count = 0;  // Reset stable count if not converged
+        // Update previous values
+        for (int i = 0; i < 3; i++) {
+          prev_ypr[i] = ypr[i];
+          prev_xyz[i] = xyzReal[i];
+        }
+      }
+    }
+    
+    iteration++;
+  }
+  
+  if (iteration >= MAX_ITERATIONS) {
+    PTL("IMU convergence timeout - proceeding anyway");
+  }
+  
+  PTL("IMU convergence detection completed using taskIMU data");
 }
 
 void getImuException() {
