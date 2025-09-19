@@ -718,10 +718,6 @@ void waitForImuConvergence() {
   int iteration = 0;
   
   PTL("Waiting for IMU convergence...");
-  PTH("Initial EEPROM lock state: ", eepromLockI2c);
-  PTH("Initial camera lock state: ", cameraLockI2c);
-  PTH("Initial gesture lock state: ", gestureLockI2c);
-  
   // Wait for taskIMU to start providing stable data
   // No need to lock I2C since we're not directly accessing IMU hardware
   PTL("Waiting for taskIMU to provide stable data...");
@@ -760,7 +756,8 @@ void waitForImuConvergence() {
     // Check if we got new data from taskIMU
     if (newDataAvailable) {
       bool converged = true;
-      print6Axis();
+      // print6Axis();
+      PT('.');
       
       // Calculate overall ypr difference using vector distance
       float ypr_diff = sqrt(pow(ypr[0] - prev_ypr[0], 2) + 
@@ -773,10 +770,10 @@ void waitForImuConvergence() {
                            pow(xyzReal[2] - prev_xyz[2], 2));
       
       // Print convergence info right after IMU data, no newline
-      PTH("\t\t\t\t\t\tYPR diff: ", ypr_diff);
-      PTH(", XYZ diff: ", xyz_diff);
-      PTH(", Remaining: ", MAX_ITERATIONS - iteration);
-      PTL("");
+      // PTH("\t\t\t\t\t\tYPR diff: ", ypr_diff);
+      // PTH(", XYZ diff: ", xyz_diff);
+      // PTH(", Remaining: ", MAX_ITERATIONS - iteration);
+      // PTL("");
       
       // Check convergence based on overall vector differences
       if (ypr_diff > YPR_THRESHOLD || xyz_diff > XYZ_THRESHOLD) {
@@ -786,7 +783,7 @@ void waitForImuConvergence() {
       if (converged) {
         stable_count++;
         if (stable_count >= MIN_STABLE_READINGS) {
-          PTL("IMU converged successfully");
+          PTL("\nIMU converged successfully");
           break;
         }
       } else {
@@ -803,10 +800,10 @@ void waitForImuConvergence() {
   }
   
   if (iteration >= MAX_ITERATIONS) {
-    PTL("IMU convergence timeout - proceeding anyway");
+    PTL("\nIMU convergence timeout - proceeding anyway");
   }
   
-  PTL("IMU convergence detection completed using taskIMU data");
+  PTL("\nIMU convergence detection completed using taskIMU data");
 }
 
 void getImuException() {
