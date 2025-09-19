@@ -293,6 +293,7 @@ function createToolbox() {
                 contents: [
                     { kind: "block", type: "play_note" },
                     { kind: "block", type: "play_melody" },
+                    { kind: "block", type: "play_tone_list" },
                 ],
             },
         ],
@@ -1204,6 +1205,36 @@ function blocklyGlobalConfig() {
                 previousStatement: null,
                 nextStatement: null,
                 colour: MOTION_COLOR,
+            });
+        },
+    };
+
+    // 音调和时长列表积木
+    Blockly.Blocks["play_tone_list"] = {
+        init: function () {
+            this.jsonInit({
+                type: "play_tone_list",
+                message0: getText("playToneListMessage"),
+                args0: [
+                    {
+                        type: "field_input",
+                        name: "TONE_LIST",
+                        text: "14,4,14,4,21,4,21,4,23,4,23,4,21,2",
+                        spellcheck: false,
+                    },
+                    {
+                        type: "field_number",
+                        name: "DELAY",
+                        value: 1,
+                        min: 0,
+                        max: 10,
+                        step: 0.01
+                    },
+                ],
+                previousStatement: null,
+                nextStatement: null,
+                colour: MUSIC_COLOR, // 音乐积木：粉色
+                tooltip: getText("playToneListTooltip"),
             });
         },
     };

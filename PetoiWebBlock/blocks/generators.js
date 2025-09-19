@@ -67,6 +67,72 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
     return code;
 };
 
+// 代码生成:播放音调列表
+Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
+    const toneList = block.getFieldValue("TONE_LIST");
+    const delay = block.getFieldValue("DELAY");
+    const delayMs = Math.round(delay * 1000);
+    
+    // 解析音调列表
+    const tones = toneList.split(',').map(t => t.trim());
+    if (tones.length % 2 !== 0) {
+        // 如果音调数量不是偶数，添加一个默认时长
+        tones.push('4');
+    }
+    
+    // 构建音调数组：[B, tone1, duration1, tone2, duration2, ..., 126]
+    // B的ASCII码是66，结束标记是126
+    const toneArray = [66]; // 'B'.charCodeAt(0) = 66
+    for (let i = 0; i < tones.length; i += 2) {
+        const tone = parseInt(tones[i]) || 0;
+        const duration = parseInt(tones[i + 1]) || 4;
+        toneArray.push(tone, duration);
+    }
+    toneArray.push(126); // 结束标记
+    
+    // 使用字节数组格式，但添加更好的错误处理
+    const command = `bytes:[${toneArray.join(',')}]`;
+    let code = wrapAsyncOperation(`
+        try {
+            const result = await webRequest("${command}", 15000, true);
+            if (result !== null) console.log(result);
+        } catch (error) {
+            console.error("音调列表发送失败:", error);
+            // 如果字节数组发送失败，尝试逐个发送音符
+            ${generateFallbackNotes(tones)}
+        }
+    `) + '\n';
+    
+    if (delayMs > 0) {
+        // 对于长时间延时，分段检查停止标志
+        if (delayMs > 100) {
+            code += `await (async () => {
+  const checkInterval = 100; // 每100ms检查一次
+  const totalChecks = Math.ceil(${delayMs} / checkInterval);
+  for (let i = 0; i < totalChecks; i++) {
+    checkStopExecution();
+    await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, ${delayMs} - i * checkInterval)));
+  }
+})();\n`;
+        } else {
+            code += `checkStopExecution();\nawait new Promise(resolve => setTimeout(resolve, ${delayMs}));\n`;
+        }
+    }
+    return code;
+};
+
+// 生成备用音符发送代码的辅助函数
+function generateFallbackNotes(tones) {
+    let fallbackCode = '';
+    for (let i = 0; i < tones.length; i += 2) {
+        const tone = parseInt(tones[i]) || 0;
+        const duration = parseInt(tones[i + 1]) || 4;
+        fallbackCode += `await webRequest("b ${tone} ${duration}", 5000, true);
+            `;
+    }
+    return fallbackCode;
+}
+
 // 代码生成:发送杂技动作命令
 Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
@@ -633,26 +699,27 @@ await (async function() {
 
 function encodeCommand(token, params) {
     if (token.charCodeAt(0) >= 65 && token.charCodeAt(0) <= 90) {
-        // params is int array
-        let finalParams = [...params];
+        // 大写字母开头的指令，直接按字节发送
+        let byteArray = [];
         
-        // 对于B命令（播放音乐），在末尾添加'~'字符
-        if (token === 'B') {
-            finalParams.push(126); // '~'的ASCII码
-        }
-        
-        let totalLen = token.length + finalParams.length;
-        let buffer = new Uint8Array(totalLen);
+        // 添加token字符
         for (let i = 0; i < token.length; i++) {
-            buffer[i] = token.charCodeAt(i);
+            byteArray.push(token.charCodeAt(i));
         }
-        for (let i = 0; i < finalParams.length; i++) {
+        
+        // 添加参数
+        for (let i = 0; i < params.length; i++) {
             // 保证负数转成补码
-            buffer[token.length + i] = finalParams[i] & 0xff;
+            byteArray.push(params[i] & 0xff);
         }
-        const dataText = String.fromCharCode.apply(null, buffer);
-        return "b64:" + btoa(dataText);
+        
+        // 大写字母开头的指令在末尾添加'~'字符（ASCII 126）
+        byteArray.push(126);
+        
+        // 返回字节数组标识符和数组
+        return "bytes:" + JSON.stringify(byteArray);
     } else {
+        // 小写字母开头的指令，按原有方式处理
         if (params.length > 0) {
             return `${token}${params.join(" ")}`;
         } else {
@@ -694,8 +761,13 @@ function parseSingleResult(rawResult) {
         return 0;
     }
     
+    // 如果rawResult已经是数字，直接返回
+    if (typeof rawResult === 'number') {
+        return rawResult;
+    }
+    
     // 首先尝试提取=号后的数字
-    if (rawResult.includes("=")) {
+    if (typeof rawResult === 'string' && rawResult.includes("=")) {
         const lines = rawResult.split("\\\\n");
         for (let i = 0; i < lines.length; i++) {
             if (lines[i] && lines[i].trim() === "=" && i + 1 < lines.length) {
@@ -708,11 +780,13 @@ function parseSingleResult(rawResult) {
     }
 
     // 尝试从单行格式中提取数字，如"4094 R"
-    const words = rawResult.trim().split(/\s+/);
-    for (const word of words) {
-        const num = parseInt(word);
-        if (!isNaN(num)) {
-            return num;
+    if (typeof rawResult === 'string') {
+        const words = rawResult.trim().split(/\s+/);
+        for (const word of words) {
+            const num = parseInt(word);
+            if (!isNaN(num)) {
+                return num;
+            }
         }
     }
 
