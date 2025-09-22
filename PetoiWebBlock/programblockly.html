@@ -2552,10 +2552,80 @@ Generated at: ${now.toISOString()}
       // 通用串口芯片厂商（只检查vendorId，不限制productId）
       { vendorId: 0x1a86, name: 'CH340/CH343' },  // 沁恒微电子（CH340、CH343等）
       { vendorId: 0x10c4, name: 'CP2102' },       // Silicon Labs（CP2102等）
+      { vendorId: 0x0403, name: 'FTDI' },        // FTDI (FT232/FT2232 等)
+      { vendorId: 0x067b, name: 'Prolific' },    // Prolific (PL2303 等)
+      { vendorId: 0x2341, name: 'Arduino' },     // Arduino (Arduino.cc)
+      { vendorId: 0x2a03, name: 'Arduino-org' }, // Arduino.org
+      { vendorId: 0x03eb, name: 'Microchip/Atmel' }, // UNO R3 16U2 等
       // ESP32内置USB（需要精确匹配）
       { vendorId: 0x303a, productId: 0x1001, name: 'ESP32-S2' }, // ESP32-S2 内置USB
       { vendorId: 0x303a, productId: 0x0002, name: 'ESP32-S3' }, // ESP32-S3 内置USB
     ];
+
+    // 构建供 Chrome 原生串口选择器使用的过滤规则
+    function buildWebSerialFilters()
+    {
+      try
+      {
+        // 在 Windows 上，很多 USB-UART 桥接芯片的 VID/PID 信息无法通过 Web Serial 匹配到，
+        // 传入 filters 反而会导致原生选择器显示 “no compatible devices found”。
+        // 因此在 Windows 上直接返回空数组，使用不带过滤器的选择器以展示所有可用的 COM 口。
+        const isWindows = (navigator.platform && navigator.platform.includes('Win')) ||
+          (navigator.userAgent && navigator.userAgent.includes('Windows'));
+
+        if (isWindows)
+        {
+          if (typeof showDebug !== 'undefined' && showDebug)
+          {
+            console.log('Windows detected: using unfiltered serial picker');
+          }
+          return [];
+        }
+
+        const filters = [];
+        ESP32_USB_CHIPS.forEach(chip =>
+        {
+          if (chip.productId !== undefined)
+          {
+            filters.push({ usbVendorId: chip.vendorId, usbProductId: chip.productId });
+          } else
+          {
+            filters.push({ usbVendorId: chip.vendorId });
+          }
+        });
+        return filters;
+      } catch (e)
+      {
+        return [];
+      }
+    }
+
+    // 使用过滤器优先的串口请求封装；若因过滤器导致“no compatible devices found”，自动回退为无过滤请求
+    async function requestSerialPortWithFallback()
+    {
+      const builtFilters = buildWebSerialFilters();
+      try
+      {
+        // 如果没有过滤器，直接调用无参版本，展示所有端口
+        if (!builtFilters || builtFilters.length === 0)
+        {
+          return await navigator.serial.requestPort({});
+        }
+        return await navigator.serial.requestPort({ filters: builtFilters });
+      } catch (error)
+      {
+        // 当过滤器导致设备不匹配时，Chrome 会抛出 NotFoundError，消息通常包含 "compatible devices"
+        if (error && error.name === 'NotFoundError' && /compatible devices/i.test(error.message || ''))
+        {
+          if (typeof showDebug !== 'undefined' && showDebug)
+          {
+            console.log('Filtered picker returned no compatible devices, falling back to unfiltered picker');
+          }
+          return await navigator.serial.requestPort({});
+        }
+        throw error;
+      }
+    }
 
     // 系统检测函数
     function detectOperatingSystem()
@@ -3062,7 +3132,8 @@ Generated at: ${now.toISOString()}
         {
           try
           {
-            const systemPort = await navigator.serial.requestPort();
+            // 使用与页面自定义过滤一致的规则，直接应用到 Chrome 原生串口选择器
+            const systemPort = await navigator.serial.requestPort({ filters: buildWebSerialFilters() });
             cleanupPortSelector();
             resolve(systemPort);
           } catch (error)
@@ -3207,26 +3278,21 @@ Generated at: ${now.toISOString()}
           }
         }
 
-        // 显示有效串口的简要信息
-        if (typeof showDebug !== 'undefined' && showDebug)
+        // 显示有效串口的简要信息（总是打印，便于收集未知设备的VID/PID）
+        validPorts.forEach((port, index) =>
         {
-          validPorts.forEach((port, index) =>
+          try
           {
-            try
-            {
-              const displayName = getSmartPortDisplayName(port, validPorts);
-              const portInfo = port.getInfo();
-              const isESP32 = isESP32SerialPort(port);
-              console.log(getText("portInfo").replace("{index}", index + 1).replace("{name}", displayName));
-
-              // 显示硬件信息（用于诊断端口识别问题）
-              console.log(getText("hardwareInfo").replace("{vid}", portInfo.usbVendorId?.toString(16)).replace("{pid}", portInfo.usbProductId?.toString(16)).replace("{isESP32}", isESP32));
-            } catch (error)
-            {
-              console.log(getText("portInfoError").replace("{index}", index + 1));
-            }
-          });
-        }
+            const displayName = getSmartPortDisplayName(port, validPorts);
+            const portInfo = port.getInfo();
+            const isESP32 = isESP32SerialPort(port);
+            console.log(getText("portInfo").replace("{index}", index + 1).replace("{name}", displayName));
+            console.log(getText("hardwareInfo").replace("{vid}", portInfo.usbVendorId?.toString(16)).replace("{pid}", portInfo.usbProductId?.toString(16)).replace("{isESP32}", isESP32));
+          } catch (error)
+          {
+            console.log(getText("portInfoError").replace("{index}", index + 1));
+          }
+        });
 
         // 获取ESP32串口列表
         const esp32Ports = validPorts.filter(port => isESP32SerialPort(port));
@@ -3245,22 +3311,42 @@ Generated at: ${now.toISOString()}
           {
             console.log(getText("noAuthorizedPorts"));
           }
-          const selectPort = await navigator.serial.requestPort();
+          // 直接使用 Chrome 原生选择器（带过滤优先，必要时回退为无过滤）
+          const selectPort = await requestSerialPortWithFallback();
           port = selectPort;
+          try
+          {
+            const pinfo = port.getInfo();
+            console.log(getText("portInfo").replace("{index}", 1).replace("{name}", getSerialPortDisplayName(port)));
+            console.log(getText("hardwareInfo").replace("{vid}", pinfo.usbVendorId?.toString(16)).replace("{pid}", pinfo.usbProductId?.toString(16)).replace("{isESP32}", isESP32SerialPort(port)));
+          } catch (e) { /* ignore */ }
         } else
         {
-          // 显示包含所有端口选择的对话框（包括"选择其他端口"选项）
+          // 统一走 Chrome 原生选择器（带过滤优先，必要时回退为无过滤）
           if (typeof showDebug !== 'undefined' && showDebug)
           {
             console.log(getText("showingPortsForSelection").replace("{count}", validPorts.length));
           }
-          port = await createAllPortsSelector(validPorts);
+          port = await requestSerialPortWithFallback();
+          try
+          {
+            const pinfo = port.getInfo();
+            console.log(getText("portInfo").replace("{index}", 1).replace("{name}", getSerialPortDisplayName(port)));
+            console.log(getText("hardwareInfo").replace("{vid}", pinfo.usbVendorId?.toString(16)).replace("{pid}", pinfo.usbProductId?.toString(16)).replace("{isESP32}", isESP32SerialPort(port)));
+          } catch (e) { /* ignore */ }
         }
 
         // 连接串口
         try
         {
-          await port.open({ baudRate: 115200 });
+          // 统一波特率为 115200（与固件设置一致）
+          let defaultBaud = 115200;
+
+          await port.open({ baudRate: defaultBaud });
+          // 部分板卡（如 Arduino/16U2 桥接）需要置位 DTR/RTS 才会输出数据
+          try { await port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (e) { /* ignore */ }
+          // 打开后短暂等待，给自动复位的板卡时间启动固件
+          await new Promise(resolve => setTimeout(resolve, 300));
           console.log(getText("esp32PortConnected"));
         } catch (portError)
         {
@@ -3284,33 +3370,13 @@ Generated at: ${now.toISOString()}
         reader = port.readable.getReader();
         writer = port.writable.getWriter();
 
-        // 验证串口连接 - 发送'?'字符并等待回复
-        console.log(getText("validatingSerialConnection"));
-        const validationResult = await validateSerialConnection();
-
-        if (!validationResult)
+        // 尝试获取设备信息（非强制）：发送'?'查询机型/版本，但不再以此作为打开串口的前置条件
+        try
         {
-          // 验证失败，立即显示错误窗口，然后快速关闭串口
-          console.log(getText("serialValidationFailed"));
-          showCustomAlert(getText("serialValidationFailed"), getText("connectionFailed"));
-          // 快速关闭串口，不等待超时
-          quickCloseSerialPort();
-          // 清理可能存在的对话框
-          const existingOverlay = document.querySelector('.esp32-port-selector');
-          if (existingOverlay)
-          {
-            try
-            {
-              document.body.removeChild(existingOverlay);
-            } catch (error)
-            {
-              console.warn('Error removing overlay after validation failure:', error);
-            }
-          }
-          return;
-        }
-
-        console.log(getText("serialValidationSuccess"));
+          console.log(getText("validatingSerialConnection"));
+          // 异步尝试，不阻塞也不影响后续流程
+          validateSerialConnection().catch(() => { /* ignore validation errors */ });
+        } catch (e) { /* ignore */ }
 
         // 验证成功后显示串口界面
         const serialInterface = document.getElementById('serialInterface');
@@ -3995,10 +4061,6 @@ Generated at: ${now.toISOString()}
       }
     }
 
-
-
-
-
     // 测试串口选择窗口居中显示
     function testPortSelectorCentering()
     {
@@ -4106,12 +4168,12 @@ Generated at: ${now.toISOString()}
 
 
 
-    // 验证串口连接 - 发送'?'字符并检查回复
+    // 验证串口连接 - 发送'?'字符并基于缓冲区轮询检查回复（避免与读取循环争用 reader）
     async function validateSerialConnection()
     {
       try
       {
-        // 清空之前的缓冲区
+        // 清空之前的缓冲区（仅影响验证期的匹配，不影响输出渲染）
         serialBufferText = '';
         serialBuffer = '';
 
@@ -4120,74 +4182,35 @@ Generated at: ${now.toISOString()}
         const waitTime = (os === 'windows') ? TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_WINDOWS : TIMEOUT_CONFIG.UI.VALIDATION_TIMEOUT_OTHER;
         const maxRetries = (os === 'windows') ? 3 : 1; // Windows系统重试3次，其他系统重试1次
 
+        const encoder = new TextEncoder();
         for (let attempt = 1; attempt <= maxRetries; attempt++)
         {
           try
           {
             console.log(getText("sentValidationCommand") + ` (attempt ${attempt}/${maxRetries})`);
 
-            // 发送'?'字符
-            const encoder = new TextEncoder();
-            const data = encoder.encode('?');
-            await writer.write(data);
+            // 发送'?'字符（不少固件单字符命令无需换行）
+            await writer.write(encoder.encode('?'));
 
             const startTime = Date.now();
-            let response = '';
-            let validationTimeout = false;
+            const keywordRegex = /(Bittle|Nybble|Petoi|Chero)/i;
+            let matched = false;
 
-            // 设置超时时间
-            const timeoutPromise = new Promise((resolve) =>
+            // 轮询缓冲区，等待固件自报信息
+            while (Date.now() - startTime < waitTime)
             {
-              setTimeout(() =>
+              if (serialBuffer && keywordRegex.test(serialBuffer))
               {
-                validationTimeout = true;
-                resolve();
-              }, waitTime);
-            });
-
-            // 等待回复或超时
-            const responsePromise = new Promise(async (resolve) =>
-            {
-              while (!validationTimeout && Date.now() - startTime < waitTime)
-              {
-                try
-                {
-                  const { value, done } = await reader.read();
-                  if (done) break;
-
-                  const text = new TextDecoder().decode(value);
-                  response += text;
-
-                  // 检查是否包含Petoi设备标识
-                  if (response.includes('Bittle') || response.includes('Nybble') || response.includes('Petoi') || response.includes('Chero'))
-                  {
-                    // 提取设备型号信息用于控制台显示
-                    const cleanResponse = response.replace(/[\r\n?]+/g, ' ').trim();
-                    const modelInfo = cleanResponse.replace(/\s*\?\s*$/, '').trim();
-                    console.log(getText("model") + ":", modelInfo);
-
-                    resolve(true);
-                    return;
-                  }
-
-                  // 如果已经超过等待时间，停止等待
-                  if (Date.now() - startTime >= waitTime)
-                  {
-                    break;
-                  }
-                } catch (error)
-                {
-                  console.warn("Error reading during validation:", error);
-                  break;
-                }
+                matched = true;
+                // 提取一段可读信息用于展示
+                const snippet = serialBuffer.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+                console.log(getText("model") + ":", snippet);
+                break;
               }
-              resolve(false);
-            });
+              await new Promise(r => setTimeout(r, 50));
+            }
 
-            // 等待第一个完成的Promise
-            const result = await Promise.race([responsePromise, timeoutPromise]);
-
-            if (validationTimeout)
+            if (!matched)
             {
               console.log(getText("serialValidationTimeout") + ` (attempt ${attempt}/${maxRetries})`);
               if (attempt < maxRetries)
@@ -4196,22 +4219,11 @@ Generated at: ${now.toISOString()}
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
               }
-              return false;
+              return false; // 未匹配不致命
             }
 
-            if (result)
-            {
-              console.log(`Validation successful on attempt ${attempt}`);
-              return true;
-            }
-
-            // 如果当前尝试失败且还有重试机会
-            if (attempt < maxRetries)
-            {
-              console.log(`Validation failed on attempt ${attempt}, retrying...`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
+            console.log(`Validation successful on attempt ${attempt}`);
+            return true;
           } catch (error)
           {
             console.warn(`Validation attempt ${attempt} failed:`, error);

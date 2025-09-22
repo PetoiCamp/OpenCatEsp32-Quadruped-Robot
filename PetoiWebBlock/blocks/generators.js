@@ -687,11 +687,26 @@ Blockly.JavaScript.forBlock["getCameraCoordinate"] = function (
     let code = `
 await (async function() {
   checkStopExecution();
-  await webRequest("XC", 5000, true);
+  // 仅在第一次获取坐标前激活相机
+  if (typeof window === 'undefined' || !window.__cameraActivated) {
+    await webRequest("XC", 5000, true);
+    if (typeof window !== 'undefined') window.__cameraActivated = true;
+  }
   checkStopExecution();
-  const rawResult = await webRequest("XCp", 5000, true);
-  const result = parseCameraCoordinateResult(rawResult);
-    return result;
+  // 取触发前最近的一帧 key，用于等待新帧
+  const before = (typeof window !== 'undefined' && window.__lastCameraFrameKey) ? window.__lastCameraFrameKey : '';
+  await webRequest("XCp", 5000, true);
+  // 优先等待“新的一帧”坐标，最大等待 300ms，以与串口显示同步
+  let result = await waitForNewCameraCoordinates(before, 350);
+  if (!Array.isArray(result) || result.length !== 4) {
+    // 回退：尝试直接解析传回文本或短暂再等
+    const rawTail = (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') ? serialBuffer.slice(-2000) : '';
+    result = parseCameraCoordinateResult(rawTail);
+  }
+  if (!Array.isArray(result) || result.length !== 4) {
+    result = await waitForCameraCoordinates(600);
+  }
+  return result;
 })()
 `;
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
@@ -798,20 +813,157 @@ function parseSingleResult(rawResult) {
 //-23.00 20.00 size = 42 56
 //X
 function parseCameraCoordinateResult(rawResult) {
-    // 检查rawResult是否为null或undefined
-    if (!rawResult) {
-        console.warn('parseCameraCoordinateResult: rawResult is null or undefined');
+    // 内部通用解析：支持两种格式
+    // 1) 旧格式（行0为坐标，行2为'X'，使用Tab分隔）
+    // 2) 新格式（行0为'=', 行1为"x y size = w h"，行2为'X'）
+    function extractFromText(text) {
+        if (!text) return [];
+        const norm = String(text).replace(/\r\n/g, "\n");
+        const lines = norm.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+        // 优先匹配新格式块：
+        // =\n<coords line>\nX
+        // 其中 <coords line> 形如 "-65.00 -2.00 size = 97 138"
+        // 取最后一帧匹配（避免切片里有多帧时总拿到旧帧）
+        const blockRegex = /=\s*\n([^\n]+)\nX/gi;
+        let blockMatch = null;
+        let lastMatch = null;
+        while ((blockMatch = blockRegex.exec(norm)) !== null) {
+            lastMatch = blockMatch;
+        }
+        if (lastMatch && lastMatch[1]) {
+            const mid = lastMatch[1];
+            const coordsRegex = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/i;
+            const m = mid.match(coordsRegex);
+            if (m) {
+                const x = parseFloat(m[1]);
+                const y = parseFloat(m[2]);
+                const w = parseFloat(m[3]);
+                const h = parseFloat(m[4]);
+                if ([x, y, w, h].every(v => !Number.isNaN(v))) {
+                    return [x, y, w, h];
+                }
+            }
+        }
+
+        // 回退匹配旧格式：行2含X，坐标在行0（Tab分隔，索引0、1、4、5）
+        if (lines.length >= 3 && /x/i.test(lines[2])) {
+            const args = lines[0].split(/\t+/);
+            if (args.length >= 6) {
+                const x = parseFloat(args[0]);
+                const y = parseFloat(args[1]);
+                const width = parseFloat(args[4]);
+                const height = parseFloat(args[5]);
+                if ([x, y, width, height].every(v => !Number.isNaN(v))) {
+                    return [x, y, width, height];
+                }
+            }
+        }
         return [];
     }
-    
-    const lines = rawResult.split("\n");
-    if (lines.length >= 3 && lines[2] && lines[2].includes("X")) {
-        const args = lines[0].split("\t");
-        const x = parseFloat(args[0]);
-        const y = parseFloat(args[1]);
-        const width = parseFloat(args[4]);
-        const height = parseFloat(args[5]);
-        return [x, y, width, height];
+
+    // 1) 尝试解析传入的 rawResult（WebSocket 路径通常返回完整文本）
+    let parsed = extractFromText(rawResult);
+    if (parsed.length === 4) return parsed;
+
+    // 2) 串口路径下，webRequest("XCp") 可能返回占位文本（如"Command sent via serial"）。
+    //    此时从全局串口缓冲区中回退解析最新一帧坐标块（优先使用全局绑定 serialBuffer，其次 window.serialBuffer）。
+    try {
+        let buf = '';
+        if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') {
+            buf = serialBuffer;
+        } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') {
+            buf = window.serialBuffer;
+        }
+        if (buf && buf.length > 0) {
+            // 仅使用缓冲区末尾部分以提高命中率与性能
+            const tail = buf.slice(-2000);
+            parsed = extractFromText(tail);
+            if (parsed.length === 4) return parsed;
+        }
+    } catch (e) {
+        // 忽略回退解析中的异常
+    }
+
+    // 3) 仍未解析到有效数据
+    return [];
+}
+
+// 轮询等待串口缓冲区中出现一帧坐标数据（= / coords / X）
+async function waitForCameraCoordinates(timeoutMs = 1000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const parsed = parseCameraCoordinateResult("");
+        if (Array.isArray(parsed) && parsed.length === 4) {
+            return parsed;
+        }
+        await new Promise(r => setTimeout(r, 50));
+    }
+    return [];
+}
+
+// 从串口缓冲区提取最新一帧坐标（尽可能使用最后一帧，避免拿到旧帧）
+function getLatestCameraCoordinatesNoWait() {
+    try {
+        let buf = '';
+        if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') {
+            buf = serialBuffer;
+        } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') {
+            buf = window.serialBuffer;
+        }
+        if (!buf) return { coords: [], key: '' };
+
+        const norm = String(buf).replace(/\r\n/g, "\n");
+        // 找到最后一个整行的 X 标记
+        let lastXMatch = null;
+        const xRegex = /(^|\n)X(\n|$)/g;
+        let m;
+        while ((m = xRegex.exec(norm)) !== null) {
+            lastXMatch = { index: m.index + (m[1] ? m[1].length : 0) };
+        }
+        if (!lastXMatch) return { coords: [], key: '' };
+
+        const xIndex = lastXMatch.index;
+        const coordsEnd = xIndex; // 坐标行在 X 前一行
+        const coordsStart = norm.lastIndexOf('\n', coordsEnd - 1) + 1;
+        if (coordsStart < 0 || coordsStart >= coordsEnd) return { coords: [], key: '' };
+        const coordsLine = norm.substring(coordsStart, coordsEnd).trim();
+
+        // 可选的 '=' 行检查（不强制）
+        const eqEnd = coordsStart - 1;
+        const eqStart = norm.lastIndexOf('\n', eqEnd - 1) + 1;
+        const eqLine = eqStart >= 0 ? norm.substring(eqStart, eqEnd).trim() : '';
+        // 解析坐标
+        const coordsRegex = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/i;
+        const c = coordsLine.match(coordsRegex);
+        if (c) {
+            const x = parseFloat(c[1]);
+            const y = parseFloat(c[2]);
+            const w = parseFloat(c[3]);
+            const h = parseFloat(c[4]);
+            if ([x, y, w, h].every(v => !Number.isNaN(v))) {
+                const key = `${eqLine}|${coordsLine}|X`;
+                return { coords: [x, y, w, h], key };
+            }
+        }
+        return { coords: [], key: '' };
+    } catch (e) {
+        return { coords: [], key: '' };
+    }
+}
+
+// 等待出现新的一帧坐标（与 prevKey 不同），用于与串口监视器同步
+async function waitForNewCameraCoordinates(prevKey, timeoutMs = 500) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const { coords, key } = getLatestCameraCoordinatesNoWait();
+        if (key && key !== prevKey && Array.isArray(coords) && coords.length === 4) {
+            if (typeof window !== 'undefined') {
+                window.__lastCameraFrameKey = key;
+            }
+            return coords;
+        }
+        await new Promise(r => setTimeout(r, 20));
     }
     return [];
 }
