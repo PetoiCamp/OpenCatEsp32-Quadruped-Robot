@@ -689,7 +689,7 @@ await (async function() {
   checkStopExecution();
   // 仅在第一次获取坐标前激活相机
   if (typeof window === 'undefined' || !window.__cameraActivated) {
-    await webRequest("XCr", 5000, true);
+    await webRequest("XC", 5000, true);
     if (typeof window !== 'undefined') window.__cameraActivated = true;
   }
   checkStopExecution();
@@ -707,6 +707,29 @@ await (async function() {
     result = await waitForCameraCoordinates(600);
   }
   return result;
+})()
+`;
+    return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
+};
+
+// 新增：手势传感器读取积木的代码生成器
+Blockly.JavaScript.forBlock["get_gesture_value"] = function (block) {
+    let code = `
+await (async function() {
+  checkStopExecution();
+  // 首次进入手势模式
+  if (typeof window === 'undefined' || !window.__gestureActivated) {
+    await webRequest("XGr", 5000, true);
+    if (typeof window !== 'undefined') window.__gestureActivated = true;
+  }
+  checkStopExecution();
+  // 只发送一次获取命令，串口返回时由 readSerialData 钩子即时打印并对齐时间戳
+  if (typeof window === 'undefined' || !window.__gesturePolled) {
+    await webRequest("XGP", 5000, true);
+    if (typeof window !== 'undefined') window.__gesturePolled = true;
+  }
+  // 生成器返回空字符串，避免与钩子重复打印
+  return "";
 })()
 `;
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
@@ -966,6 +989,69 @@ async function waitForNewCameraCoordinates(prevKey, timeoutMs = 500) {
         await new Promise(r => setTimeout(r, 20));
     }
     return [];
+}
+
+// ===== 手势传感器解析与等待 =====
+function parseGestureValueFromText(text) {
+    if (!text) return { value: null, key: '' };
+    const norm = String(text).replace(/\r\n/g, "\n");
+    // 取最后一帧：= \n (可选: 数字) \n X
+    const frameRegex = /=\s*\n([0-3])?\s*\nX/gi;
+    let match = null, lastMatch = null;
+    while ((match = frameRegex.exec(norm)) !== null) {
+        lastMatch = match;
+    }
+    if (!lastMatch) {
+        // 兼容无数字行：=\nX
+        const emptyRegex = /=\s*\nX/gi;
+        let m2 = null, last2 = null;
+        while ((m2 = emptyRegex.exec(norm)) !== null) {
+            last2 = m2;
+        }
+        if (last2) {
+            const key = '=|X';
+            return { value: null, key };
+        }
+        return { value: null, key: '' };
+    }
+    const digit = lastMatch[1];
+    const val = (typeof digit !== 'undefined' && digit !== undefined) ? parseInt(digit, 10) : null;
+    const key = `=${digit ?? ''}|X`;
+    return { value: Number.isInteger(val) ? val : null, key };
+}
+
+function getLatestGestureNoWait() {
+    try {
+        let buf = '';
+        if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') {
+            buf = serialBuffer;
+        } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') {
+            buf = window.serialBuffer;
+        }
+        if (!buf) return { value: null, key: '' };
+        const tail = buf.slice(-2000);
+        return parseGestureValueFromText(tail);
+    } catch (e) {
+        return { value: null, key: '' };
+    }
+}
+
+async function waitForNewGestureValue(prevKey, timeoutMs = 500) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const { value, key } = getLatestGestureNoWait();
+        if (key && key !== prevKey) {
+            if (typeof window !== 'undefined') {
+                window.__lastGestureFrameKey = key;
+            }
+            if (value === null || value === undefined) {
+                return -1;
+            }
+            return value;
+        }
+        await new Promise(r => setTimeout(r, 5));
+    }
+    return -1;
 }
 
 // rawResult is string like "0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t\n0,\t0,\t0,\t0,\t0,\t0,\t0,\t0,\t30,\t30,\t30,\t30,\t30,\t30,\t30,\t30,\t\nj\n"

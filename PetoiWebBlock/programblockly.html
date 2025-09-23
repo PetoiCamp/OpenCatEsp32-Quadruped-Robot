@@ -2204,6 +2204,56 @@ ${code}
       void logDiv.offsetHeight;
     }
 
+    // 使用指定时间戳写入控制台（与串口监视器时间对齐）
+    function addConsoleMessageAt(args, timestampStr)
+    {
+      const logDiv = document.getElementById('consoleLog');
+      const showTimestamp = document.getElementById('showTimestampBtn').classList.contains('active');
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'console-item';
+
+      const messages = Array.from(args).map(arg => typeof arg === 'object' ? (()=>{ try { return JSON.stringify(arg, null, 2); } catch { return String(arg); } })() : String(arg));
+      const messageText = messages.join(' ');
+
+      const timestampSpan = document.createElement('span');
+      timestampSpan.className = 'timestamp';
+      timestampSpan.textContent = `${timestampStr} `;
+      timestampSpan.style.display = showTimestamp ? 'inline' : 'none';
+
+      const messageSpan = document.createElement('span');
+      messageSpan.className = 'message-content';
+      messageSpan.textContent = `${messageText} `;
+
+      messageDiv.appendChild(timestampSpan);
+      messageDiv.appendChild(messageSpan);
+      logDiv.appendChild(messageDiv);
+
+      while (logDiv.children.length > 500)
+      {
+        logDiv.removeChild(logDiv.firstChild);
+      }
+
+      logDiv.scrollTop = logDiv.scrollHeight;
+      void logDiv.offsetHeight;
+    }
+
+    // 将检测到的手势数值镜像到 Console（使用与串口相同时间戳）
+    function mirrorGestureToConsole(lineText, timestampStr)
+    {
+      try
+      {
+        if (!(typeof window !== 'undefined' && window.__gestureActivated)) return;
+        const s = String(lineText || '').trim();
+        if (!/^\d+$/.test(s)) return;
+        const val = parseInt(s, 10);
+        if (val < 0 || val > 3) return;
+        addConsoleMessageAt([s], timestampStr);
+        const label = val===0?'Up': val===1?'Down': val===2?'Left': 'Right';
+        addConsoleMessageAt([label], timestampStr);
+      } catch (e) { /* ignore */ }
+    }
+
     function clearConsole()
     {
       document.getElementById('consoleLog').innerHTML = '';
@@ -2440,6 +2490,12 @@ Generated at: ${now.toISOString()}
     {
       // 检查是否为debug信息
       const message = Array.from(arguments).join(' ');
+      // 忽略空字符串或全空白打印，避免产生空行
+      if (arguments.length === 1 && typeof arguments[0] === 'string' && arguments[0].trim() === '')
+      {
+        originalLog.apply(console, arguments);
+        return;
+      }
       const isDebugMessage = isDebugInfo(message);
 
       // 如果是debug信息且debug开关关闭，则不显示
@@ -4257,10 +4313,16 @@ Generated at: ${now.toISOString()}
           const text = new TextDecoder().decode(value);
           if (!text) continue; // 如果没有数据，跳过
           serialBufferText += text;
-          const lastLineIndex = serialBufferText.lastIndexOf('\r\n');
-          const linesText = serialBufferText.substring(0, lastLineIndex) + '\r\n';
-          const lines = linesText.split('\r\n');
-          serialBufferText = serialBufferText.substring(lastLineIndex + 2); // 保留剩余部分
+          // 统一换行并按最后一个换行边界切片，避免丢行（兼容 \r\n / \n / \r）
+          let normalizedBuffer = serialBufferText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          const lastBreak = normalizedBuffer.lastIndexOf('\n');
+          const chunkText = lastBreak >= 0 ? normalizedBuffer.substring(0, lastBreak + 1) : '';
+          // 提取每一行的到达时间戳，解决 Console 时间戳先于串口显示的问题
+          const nowTs = getFormattedTimestamp();
+          const lines = chunkText ? chunkText.split('\n').filter(l => l.length > 0) : [];
+          const lineTimestamps = lines.map(() => nowTs);
+          // 保留未完整的一行到下一次
+          serialBufferText = lastBreak >= 0 ? normalizedBuffer.substring(lastBreak + 1) : serialBufferText;
           serialBuffer += text; // 添加到serialBuffer用于响应处理
 
           // 旧的解析逻辑已移除，现在由waitForSerialResponse函数统一处理传感器数据
@@ -4302,6 +4364,44 @@ Generated at: ${now.toISOString()}
               break; // 找到IP地址后跳出循环
             }
           }
+
+          // 手势帧检测：扫描完整行序列中的模式 = / <0-3> / X，并同步在Console打印同一时间戳
+          (function detectGestureFrames(arr, tsArr){
+            try {
+              const consumed = new Set();
+              // 先匹配三行完整帧 = / number / X
+              for (let i = 0; i + 2 < arr.length; i++)
+              {
+                const a = (arr[i]||'').trim();
+                const b = (arr[i+1]||'').trim();
+                const c = (arr[i+2]||'').trim();
+                if (a === '=' && /^\d+$/.test(b) && c === 'X')
+                {
+                  // 使用对应行的到达时间戳，贴近串口显示
+                  const ts = tsArr[i] || nowTs;
+                  mirrorGestureToConsole(b, ts);
+                  consumed.add(i); consumed.add(i+1); consumed.add(i+2);
+                  i += 2;
+                }
+              }
+              // 再兼容单行数值（设备可能直接输出 0/1/2/3），且在手势模式下才启用
+              const gestureMode = (typeof window !== 'undefined' && !!window.__gestureActivated);
+              if (gestureMode)
+              {
+                for (let i = 0; i < arr.length; i++)
+                {
+                  if (consumed.has(i)) continue;
+                  const s = (arr[i]||'').trim();
+                  if (/^\d+$/.test(s))
+                  {
+                    // 使用该数值行到达时的时间戳
+                    const ts = tsArr[i] || nowTs;
+                    mirrorGestureToConsole(s, ts);
+                  }
+                }
+              }
+            } catch (e) { /* ignore */ }
+          })(lines, lineTimestamps);
 
           // 将数据添加到缓冲区
           serialOutputBuffer += text;
