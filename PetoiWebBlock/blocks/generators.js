@@ -689,7 +689,7 @@ await (async function() {
   checkStopExecution();
   // 仅在第一次获取坐标前激活相机
   if (typeof window === 'undefined' || !window.__cameraActivated) {
-    await webRequest("XC", 5000, true);
+    await webRequest("XCr", 5000, true);
     if (typeof window !== 'undefined') window.__cameraActivated = true;
   }
   checkStopExecution();
