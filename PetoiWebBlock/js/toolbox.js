@@ -173,6 +173,7 @@ function createToolbox() {
                     },
                     { kind: "block", type: "getUltrasonicDistance" },
                     { kind: "block", type: "getCameraCoordinate" },
+                    { kind: "block", type: "get_gesture_value" },
                     { kind: "block", type: "send_custom_command",
                         inputs: {
                             COMMAND: {
@@ -485,6 +486,19 @@ function blocklyGlobalConfig() {
                 output: "Array",
                 colour: COMMUNICATION_COLOR, // 通信积木：红色
                 tooltip: "",
+            });
+        },
+    };
+
+    // 手势传感器读取积木
+    Blockly.Blocks["get_gesture_value"] = {
+        init: function () {
+            this.jsonInit({
+                type: "get_gesture_value",
+                message0: "Get gesture sensor value",
+                output: "Number",
+                colour: COMMUNICATION_COLOR, // 通信：红色
+                tooltip: "Read gesture value (0:Up,1:Down,2:Left,3:Right)"
             });
         },
     };
