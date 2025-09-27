@@ -139,7 +139,24 @@ void initModule(char moduleCode) {
 #ifdef BACKTOUCH_PIN
     case EXTENSION_BACKTOUCH:
       {
-        backTouchSetup();
+        // Detect at init whether the sensor is connected; disable if not
+        bool connected = true;
+#ifdef BACKTOUCH_PIN
+        pinMode(BACKTOUCH_PIN, INPUT_PULLDOWN); // avoid floating
+        analogRead(BACKTOUCH_PIN);              // prime ADC channel
+        delayMicroseconds(80);                  // settle
+        int raw = analogRead(BACKTOUCH_PIN);
+        PTHL("BackTouch raw", raw);
+        // With sensor connected and no touch it should read 4095. Otherwise treat as not connected.
+        if (raw != 4095) {
+          connected = false;
+        }
+#endif
+        if (connected) {
+          backTouchSetup();
+        } else {
+          successQ = false; // 不启用该模块
+        }
         break;
       }
 #endif
