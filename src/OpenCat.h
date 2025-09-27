@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "250919"  // YYMMDD
+#define DATE "250929"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -496,7 +496,7 @@ int8_t moduleList[] = {
     EXTENSION_QUICK_DEMO,
 };
 
-String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_Ir_Distance ", "Pir",
+String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_IR_Distance ", "PIR",
                         "BackTouch",    "Ultrasonic", "Gesture",      "Camera",        "Quick_Demo"};
 #ifdef NYBBLE
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
