@@ -4771,6 +4771,36 @@ Generated at: ${now.toISOString()}
       }
     }
 
+    // 等待串口返回指定token单独一行（用于动作完成判定）
+    async function waitForSerialTokenLine(expectedToken = 'm', timeoutMs = 15000)
+    {
+      try
+      {
+        const start = Date.now();
+        let lastIndex = typeof serialBuffer === 'string' ? serialBuffer.length : 0;
+        while (Date.now() - start < timeoutMs)
+        {
+          const currentLen = typeof serialBuffer === 'string' ? serialBuffer.length : 0;
+          if (currentLen > lastIndex)
+          {
+            const fragment = serialBuffer.substring(lastIndex, currentLen);
+            lastIndex = currentLen;
+            const norm = fragment.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const lines = norm.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+            for (const line of lines)
+            {
+              if (line === expectedToken)
+              {
+                return true;
+              }
+            }
+          }
+          await new Promise(r => setTimeout(r, 20));
+        }
+      } catch (e) { /* ignore */ }
+      return false;
+    }
+
     async function sendSerialData()
     {
       if (!writer) return;

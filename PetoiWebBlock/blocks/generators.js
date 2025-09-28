@@ -24,6 +24,8 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", 20000, true); if (result !== null) console.log(result);`) + '\n';
+    // 等待完成信号再开始延时（串口模式时）：gait 指令一般以 'k' 作为完成标记
+    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', 20000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -49,6 +51,8 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
     const delayMs = Math.round(delay * 1000);
     
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", 10000, true); if (result !== null) console.log(result);`) + '\n';
+    // 等待完成信号再开始延时（串口模式时）：'k...' 返回 'k'；'d'（rest）返回 'd'
+    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, 15000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -139,6 +143,8 @@ Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
+    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -207,6 +213,8 @@ Blockly.JavaScript.forBlock["send_custom_command"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    // 若自定义命令是 'm'/'k'/'d' 开头，串口模式下等待对应完成标记；否则跳过
+    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { try { const _c = ${command}; const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; if (_t && ('mkd'.includes(_t))) { await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}); } } catch(e) {} }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -270,6 +278,8 @@ Blockly.JavaScript.forBlock["play_melody"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.ceil(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}"); if (result !== null) console.log(result);`) + '\n';
+    // 串口模式：等到串口回 'B'（旋律完成）后，再开始计时延时
+    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -303,6 +313,9 @@ checkStopExecution();
 await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
+  if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') {
+    await waitForSerialTokenLine('m', 15000);
+  }
   return true;
 })()
 `
@@ -340,6 +353,9 @@ checkStopExecution();
 await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
+  if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') {
+    await waitForSerialTokenLine('m', 30000);
+  }
   return true;
 })()
 `
