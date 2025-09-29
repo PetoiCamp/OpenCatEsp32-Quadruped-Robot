@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "250910"  // YYMMDD
+#define DATE "250929"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -496,7 +496,7 @@ int8_t moduleList[] = {
     EXTENSION_QUICK_DEMO,
 };
 
-String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_Ir_Distance ", "Pir",
+String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_IR_Distance ", "PIR",
                         "BackTouch",    "Ultrasonic", "Gesture",      "Camera",        "Quick_Demo"};
 #ifdef NYBBLE
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
@@ -734,8 +734,18 @@ void initRobot() {
 
 #ifdef GYRO_PIN
   // readIMU(); // ypr is slow when starting up. leave enough time between IMU initialization and this reading
-  if (!moduleDemoQ && updateGyroQ)
+  if (!moduleDemoQ && updateGyroQ){
+    delay(500);
+    // Wait for IMU readings to converge before checking for exceptions
+    if (imuException != 0) {
+      waitForImuConvergence();
+      // Re-read IMU data and check for exceptions after convergence
+      readIMU();
+      getImuException();
+    }
+    print6Axis();
     tQueue->addTask((imuException) ? T_SERVO_CALIBRATE : T_REST, "");
+  }
 #endif
   PTL("Ready!");
   beep(24, 50);

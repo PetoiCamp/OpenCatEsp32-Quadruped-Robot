@@ -47,10 +47,10 @@
   #define WEB_DEBUG_F(msg)
 #endif
 
-// 网页服务器超时配置 (毫秒)
-#define HEARTBEAT_TIMEOUT 25000         // 心跳超时：25秒（匹配客户端20秒+缓冲）
-#define HEALTH_CHECK_INTERVAL 10000     // 健康检查间隔：10秒
-#define WEB_TASK_EXECUTION_TIMEOUT 30000 // 任务执行超时：30秒
+// 网页服务器超时配置 (毫秒) - 针对蓝牙共存优化
+#define HEARTBEAT_TIMEOUT 40000         // 心跳超时：40秒（增加缓冲时间应对BLE干扰）
+#define HEALTH_CHECK_INTERVAL 15000     // 健康检查间隔：15秒（减少检查频率）
+#define WEB_TASK_EXECUTION_TIMEOUT 45000 // 任务执行超时：45秒（增加执行时间）
 #define MAX_CLIENTS 2                   // 最大连接数限制
 
 // WiFi配置
@@ -147,16 +147,33 @@ void sendSocketResponse(uint8_t clientId, String message) {
 void checkConnectionHealth() {
   unsigned long currentTime = millis();
   
+  // 检查是否有BLE活动，如果有则放宽心跳超时
+  bool bleActive = false;
+#ifdef BT_CLIENT
+  extern boolean doScan;
+  extern boolean btConnected;
+  bleActive = doScan || btConnected;
+#endif
+  
+  unsigned long effectiveTimeout = bleActive ? (HEARTBEAT_TIMEOUT + 15000) : HEARTBEAT_TIMEOUT;
+  
   // 检查心跳超时
   for (auto it = lastHeartbeat.begin(); it != lastHeartbeat.end();) {
     uint8_t clientId = it->first;
     unsigned long lastHeartbeatTime = it->second;
     
-    if (currentTime - lastHeartbeatTime > HEARTBEAT_TIMEOUT) {
-      WEB_ERROR("Client heartbeat timeout, disconnecting: ", clientId);
+    if (currentTime - lastHeartbeatTime > effectiveTimeout) {
+      if (bleActive) {
+        WEB_WARN("Client heartbeat timeout during BLE activity: ", clientId);
+      } else {
+        WEB_ERROR("Client heartbeat timeout, disconnecting: ", clientId);
+      }
       
-      // 发送超时通知
-      sendSocketResponse(clientId, "{\"type\":\"error\",\"error\":\"Heartbeat timeout\"}");
+      // 发送超时通知（包含BLE状态信息）
+      String timeoutMsg = bleActive ? 
+        "{\"type\":\"error\",\"error\":\"Heartbeat timeout during BLE scan\"}" :
+        "{\"type\":\"error\",\"error\":\"Heartbeat timeout\"}";
+      sendSocketResponse(clientId, timeoutMsg);
       
       // 断开连接
       webSocket.disconnect(clientId);
@@ -530,33 +547,54 @@ void processNextWebTask()
   }
 }
 
-// WiFi配置函数
-bool connectWifi(String ssid, String password)
+// WiFi配置函数 - 增强版本，支持重试机制
+bool connectWifi(String ssid, String password, int maxRetries = 3)
 {
-  WiFi.begin(ssid.c_str(), password.c_str());
-  int timeout = 0;
-  while (WiFi.status() != WL_CONNECTED && timeout < 100) {
-    delay(100);
+  for (int retry = 0; retry < maxRetries; retry++) {
+    if (retry > 0) {
+      WEB_WARN("WiFi connection retry: ", retry);
+      delay(2000); // 重试前等待2秒
+    }
+    
+    WiFi.begin(ssid.c_str(), password.c_str());
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 100) {
+      delay(100);
+      #if WEB_DEBUG_LEVEL >= 3
+      PT('.');
+      #endif
+      timeout++;
+    }
     #if WEB_DEBUG_LEVEL >= 3
-    PT('.');
+    PTL();
     #endif
-    timeout++;
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      WEB_INFO("WiFi connected on attempt: ", retry + 1);
+      return true;
+    } else {
+      WEB_ERROR("WiFi connection failed on attempt: ", retry + 1);
+      WiFi.disconnect(true); // 完全断开连接，为下次尝试做准备
+    }
   }
-  #if WEB_DEBUG_LEVEL >= 3
-  PTL();
-  #endif
-  if (WiFi.status() == WL_CONNECTED) {
-    return true;
-  } else {
-    Serial.println("connection failed");
-    return false;
-  }
+  
+  Serial.println("All WiFi connection attempts failed");
+  return false;
 }
 
 #ifndef WIFI_MANAGER
 // 当未启用WIFI_MANAGER时，尝试读取并使用之前保存的WiFi信息连接
 bool connectWifiFromStoredConfig()
 {
+  // 检查可用内存
+  size_t freeHeap = ESP.getFreeHeap();
+  WEB_INFO("Free heap before WiFi init: ", freeHeap);
+  
+  if (freeHeap < 50000) { // 如果可用内存少于50KB
+    WEB_ERROR("Insufficient memory for WiFi initialization: ", freeHeap);
+    return false;
+  }
+  
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
 
@@ -583,6 +621,10 @@ bool connectWifiFromStoredConfig()
     webSocket.begin();
     webSocket.onEvent(handleWebSocketEvent);
     WEB_INFO_F("WebSocket server started");
+    
+    // 显示连接后的内存状态
+    size_t freeHeapAfter = ESP.getFreeHeap();
+    WEB_INFO("Free heap after WiFi connection: ", freeHeapAfter);
   } else {
     WEB_ERROR_F("Timeout: Fail to connect web server!");
   }
@@ -644,9 +686,25 @@ void WebServerLoop()
 {
   if (webServerConnected) {
     webSocket.loop();
+    
+    // 监控BLE活动对WebSocket的影响
+    static unsigned long lastBleStatusLog = 0;
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastBleStatusLog > 30000) { // 每30秒记录一次状态
+#ifdef BT_CLIENT
+      extern boolean doScan;
+      extern boolean btConnected;
+      if (doScan || btConnected) {
+        WEB_INFO("BLE active - doScan: ", doScan);
+        WEB_INFO("BLE connected: ", btConnected);
+        WEB_INFO("Active WebSocket clients: ", connectedClients.size());
+      }
+#endif
+      lastBleStatusLog = currentTime;
+    }
 
     // 定期检查连接健康状态
-    unsigned long currentTime = millis();
     if (currentTime - lastHealthCheckTime > HEALTH_CHECK_INTERVAL) {
       checkConnectionHealth();
       lastHealthCheckTime = currentTime;

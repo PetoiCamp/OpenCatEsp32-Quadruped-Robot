@@ -113,7 +113,7 @@ void initModule(char moduleCode) {
         break;
       }
 #endif
-#ifdef DOUBLE_IR_DISTANCE
+#ifdef DOUBLE_INFRARED_DISTANCE
     case EXTENSION_DOUBLE_IR_DISTANCE:
       {
         loadBySkillName("sit");
@@ -139,7 +139,24 @@ void initModule(char moduleCode) {
 #ifdef BACKTOUCH_PIN
     case EXTENSION_BACKTOUCH:
       {
-        backTouchSetup();
+        // Detect at init whether the sensor is connected; disable if not
+        bool connected = true;
+#ifdef BACKTOUCH_PIN
+        pinMode(BACKTOUCH_PIN, INPUT_PULLDOWN); // avoid floating
+        analogRead(BACKTOUCH_PIN);              // prime ADC channel
+        delayMicroseconds(80);                  // settle
+        int raw = analogRead(BACKTOUCH_PIN);
+        PTHL("BackTouch raw", raw);
+        // With sensor connected and no touch it should read 4095. Otherwise treat as not connected.
+        if (raw != 4095) {
+          connected = false;
+        }
+#endif
+        if (connected) {
+          backTouchSetup();
+        } else {
+          successQ = false; // 不启用该模块
+        }
         break;
       }
 #endif
@@ -211,7 +228,7 @@ void stopModule(char moduleCode) {
         break;
       }
 #endif
-#ifdef DOUBLE_IR_DISTANCE
+#ifdef DOUBLE_INFRARED_DISTANCE
     case EXTENSION_DOUBLE_IR_DISTANCE:
       {
         manualHeadQ = false;
@@ -432,13 +449,13 @@ void readSignal() {
   
   // Smart Bluetooth mode reading
 #if defined(BT_BLE)
-  if (activeBtMode == BT_MODE_SERVER || activeBtMode == BT_MODE_NONE) {
+  if (activeBtMode == BT_MODE_SERVER) {    // activeBtMode == BT_MODE_NONE
     detectBle();  //  newCmdIdx = 3;
     readBle();
   }
 #endif
 #if defined(BT_CLIENT)
-  if (activeBtMode == BT_MODE_CLIENT || activeBtMode == BT_MODE_NONE) {
+  if (activeBtMode == BT_MODE_CLIENT) {    // activeBtMode == BT_MODE_NONE
     readBleClient();
   }
 #endif

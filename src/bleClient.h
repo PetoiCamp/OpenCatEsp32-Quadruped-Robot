@@ -85,23 +85,39 @@ class btPetoiClientCallback : public BLEClientCallbacks {
   }
 };
 
+// Declare static variables for classes already defined
+static btPetoiClientCallback* pClientCallback = nullptr;
+static BLEClient* pBleClient = nullptr;
+
 bool connectToServer() {
-  BLEClient* pClient = BLEDevice::createClient();
-  pClient->setClientCallbacks(new btPetoiClientCallback());
-  pClient->connect(PetoiBtDevice);
-  BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
+  // Clean up any existing client resources
+  if (pBleClient != nullptr) {
+    pBleClient->disconnect();
+    delete pBleClient;
+    pBleClient = nullptr;
+  }
+  if (pClientCallback != nullptr) {
+    delete pClientCallback;
+    pClientCallback = nullptr;
+  }
+  
+  pBleClient = BLEDevice::createClient();
+  pClientCallback = new btPetoiClientCallback();
+  pBleClient->setClientCallbacks(pClientCallback);
+  pBleClient->connect(PetoiBtDevice);
+  BLERemoteService* pRemoteService = pBleClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
-    pClient->disconnect();
+    pBleClient->disconnect();
     return false;
   }
   pRemoteCharacteristicTx = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID_TX);
   pRemoteCharacteristicRx = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID_RX);
   if (pRemoteCharacteristicTx == nullptr) {
-    pClient->disconnect();
+    pBleClient->disconnect();
     return false;
   }
   if (pRemoteCharacteristicRx == nullptr) {
-    pClient->disconnect();
+    pBleClient->disconnect();
     return false;
   }
   if (!pRemoteCharacteristicTx->canWrite()) {
@@ -116,7 +132,7 @@ bool connectToServer() {
   if (pRemoteCharacteristicRx->canIndicate()) {
     pRD = pRemoteCharacteristicRx->getDescriptor(BLEUUID((uint16_t)0x2902));
     if (pRD == nullptr) {
-      pClient->disconnect();
+      pBleClient->disconnect();
       return false;
     }
     pRD->writeValue(dataIndicate, 2, false);
@@ -139,16 +155,93 @@ class PetoiAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   }
 };
 
+// Declare static variable for PetoiAdvertisedDeviceCallbacks class
+static PetoiAdvertisedDeviceCallbacks* pAdvertisedDeviceCallbacks = nullptr;
+
 void PetoiBtStartScan() {
+  // 检查WebSocket连接状态，如果有活跃连接则延迟扫描
+#ifdef WEB_SERVER
+  extern bool webServerConnected;
+  extern std::map<uint8_t, bool> connectedClients;
+  
+  if (webServerConnected && !connectedClients.empty()) {
+    PTLF("WebSocket clients active, delaying BLE scan...");
+    delay(2000); // 等待WebSocket连接稳定
+  }
+#endif
+  
   BLEDevice::init("");
   BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new PetoiAdvertisedDeviceCallbacks());
   
-  // Optimize scan parameters to improve connection stability
-  pBLEScan->setInterval(1000);    // Increase scan interval, reduce interference to 2000
-  pBLEScan->setWindow(500);      // Increase scan window, improve discovery probability to 1000
-  pBLEScan->setActiveScan(true);   // Keep active scanning
-  pBLEScan->start(5, false);     // Increase scan time to 10 seconds
+  // Clean up any existing callback instance before creating a new one
+  if (pAdvertisedDeviceCallbacks != nullptr) {
+    delete pAdvertisedDeviceCallbacks;
+    pAdvertisedDeviceCallbacks = nullptr;
+  }
+  
+  // Create and save the callback instance
+  pAdvertisedDeviceCallbacks = new PetoiAdvertisedDeviceCallbacks();
+  pBLEScan->setAdvertisedDeviceCallbacks(pAdvertisedDeviceCallbacks);
+  
+  // Optimize scan parameters to minimize WiFi interference
+  pBLEScan->setInterval(2000);    // 增加扫描间隔，减少对WiFi的干扰
+  pBLEScan->setWindow(200);       // 减少扫描窗口，降低资源占用
+  pBLEScan->setActiveScan(false); // 使用被动扫描，减少功耗和干扰
+  pBLEScan->start(3, false);      // 减少扫描时间到3秒
+}
+
+void PetoiBtStopScan() {
+  // Stop the BLE scan
+  BLEScan* pBLEScan = BLEDevice::getScan();
+  if (pBLEScan != nullptr) {
+    pBLEScan->stop();
+    pBLEScan->clearResults();  // Clear scan results
+    pBLEScan->setAdvertisedDeviceCallbacks(nullptr);  // Remove callback
+  }
+  
+  // Delete the callback instance and clean up memory
+  if (pAdvertisedDeviceCallbacks != nullptr) {
+    delete pAdvertisedDeviceCallbacks;
+    pAdvertisedDeviceCallbacks = nullptr;
+  }
+  
+  // Clean up BLE client resources
+  if (pBleClient != nullptr) {
+    if (btConnected) {
+      pBleClient->disconnect();
+    }
+    delete pBleClient;
+    pBleClient = nullptr;
+  }
+  
+  // Clean up client callback
+  if (pClientCallback != nullptr) {
+    delete pClientCallback;
+    pClientCallback = nullptr;
+  }
+  
+  // Reset connection state
+  btConnected = false;
+  btReceiveDone = false;
+  btRxLoad = "";
+  
+  // Reset scan-related flags
+  doScan = false;
+  doConnect = false;
+  
+  // Clean up the advertised device pointer if it exists
+  if (PetoiBtDevice != nullptr) {
+    delete PetoiBtDevice;
+    PetoiBtDevice = nullptr;
+  }
+  
+  // Clear remote characteristics pointers (they will be invalid after disconnect)
+  pRemoteCharacteristicTx = nullptr;
+  pRemoteCharacteristicRx = nullptr;
+  pRemoteCharacteristicTemp = nullptr;
+  pRD = nullptr;
+  
+  PTLF("BLE scan stopped and all resources cleaned up");
 }
 
 void checkBtScan() {

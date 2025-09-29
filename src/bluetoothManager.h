@@ -5,6 +5,14 @@
 #include "bleClient.h"
 #endif
 
+// 添加WiFi头文件以支持WiFi状态检查
+#ifdef WEB_SERVER
+#include <WiFi.h>
+#endif
+
+// 包含tools.h以获取调试打印宏的定义
+#include "tools.h"
+
 #ifdef BT_SSP
 #include "BluetoothSerial.h"
 
@@ -23,10 +31,10 @@ enum BluetoothMode {
 };
 
 BluetoothMode activeBtMode = BT_MODE_NONE;
-unsigned long btModeDecisionStartTime = 0;  // 30 second decision timer
+unsigned long btModeDecisionStartTime = 0;  // 3 second decision timer
 unsigned long btModeLastCheckTime = 0;      // 1 second check interval timer
 const unsigned long BT_MODE_CHECK_INTERVAL = 1000; // Check every second
-const unsigned long BT_MODE_DECISION_TIMEOUT = 30000; // 30 second decision timeout
+const unsigned long BT_MODE_DECISION_TIMEOUT = 3000; // 3 second decision timeout
 
 void initBluetoothModes();
 void checkAndSwitchBluetoothMode();
@@ -106,80 +114,73 @@ void blueSspSetup() {
 void initBluetoothModes() {
   PTLF("Initializing Bluetooth modes...");
   
-#if defined(BT_BLE) && defined(BT_CLIENT)
-  // If both modes are defined, enable intelligent switching
-  PTLF("Starting BLE Server...");
-  bleSetup();
-  delay(100);  // Give BLE server enough startup time
+  // 如果WiFi正在连接，等待一下避免资源竞争
+#ifdef WEB_SERVER
+  if (WiFi.status() == WL_DISCONNECTED) {
+    PTLF("Waiting for WiFi connection to stabilize before starting Bluetooth...");
+    delay(1000);
+  }
+#endif
   
+  btModeDecisionStartTime = millis();  // Start 3 second decision timer
+  btModeLastCheckTime = millis();      // Initialize check interval timer
+  // PTLF("Both BT modes started. Waiting for connection...");
+  
+#ifdef BT_CLIENT
   PTLF("Starting BLE Client...");
   bleClientSetup();
-  delay(100);  // Give BLE client enough startup time
+  delay(200);  // 增加启动时间，避免与WiFi冲突
+
+  unsigned long currentTime = millis();
   
-  btModeDecisionStartTime = millis();  // Start 30 second decision timer
-  btModeLastCheckTime = millis();      // Initialize check interval timer
-  PTLF("Both BT modes started. Waiting for connection...");
+  // Check 3 second decision timeout (using independent timer)
+  while (currentTime - btModeDecisionStartTime < BT_MODE_DECISION_TIMEOUT) {
+    // 减少扫描频率，避免过度干扰WebSocket连接
+    if (currentTime - btModeLastCheckTime >= BT_MODE_CHECK_INTERVAL) {
+      checkBtScan();
+      if (btConnected)
+      {
+        PTLF("BLE Client connected, shutting down Server mode");
+        activeBtMode = BT_MODE_CLIENT;
+      }
+      btModeLastCheckTime = currentTime;
+    }
+    // 检查WebSocket连接状态，如果有活跃连接则减少扫描频率
+#ifdef WEB_SERVER
+    extern bool webServerConnected;
+    extern std::map<uint8_t, bool> connectedClients;
+    
+    if (webServerConnected && !connectedClients.empty()) {
+      delay(500); // 给WebSocket更多时间处理
+    } 
+#endif
+    delay(100);
+    currentTime = millis();
+  }
+  // After timeout, shut down client mode and start server mode
+  if(activeBtMode != BT_MODE_CLIENT){
+  PTLF("Shutting down BLE Client...");
+  shutdownBleClient();
+  delay(500); // 给BLE堆栈更多时间完成清理
   
-#elif defined(BT_BLE)
+  // 完全重新初始化BLE设备以切换到Server模式
+  PTLF("Deinitializing BLE device...");
+  BLEDevice::deinit(false); // 去初始化BLE设备，但保留内存
+  delay(500); // 等待去初始化完成
+  }
+  if(activeBtMode != BT_MODE_CLIENT)
+#endif
+#if defined(BT_BLE)
   // Only start BLE server
-  activeBtMode = BT_MODE_SERVER;
+  {
+    activeBtMode = BT_MODE_SERVER;
   bleSetup();
   PTLF("BLE Server mode activated");
-  
-#elif defined(BT_CLIENT)
-  // Only start BLE client
-  activeBtMode = BT_MODE_CLIENT;
-  bleClientSetup();
-  PTLF("BLE Client mode activated");
-#else
-  PTLF("No Bluetooth mode enabled");
+  }
 #endif
 
 #ifdef BT_SSP
   blueSspSetup();
-#endif
-}
-
-void checkAndSwitchBluetoothMode() {
-  if (activeBtMode != BT_MODE_NONE) {  
-    return; // No need to switch or already switched
-  }
-  
-  unsigned long currentTime = millis();
-  
-  // Check 30 second decision timeout (using independent timer)
-  if (currentTime - btModeDecisionStartTime > BT_MODE_DECISION_TIMEOUT) {
-    // After timeout, default to closing BLE client, keeping server mode
-    PTLF("BT mode decision timeout, defaulting to Server mode");
-    shutdownBleClient();
-    activeBtMode = BT_MODE_SERVER;
-    return;
-  }
-  
-  // Check 1 second check interval
-  if (currentTime - btModeLastCheckTime < BT_MODE_CHECK_INTERVAL) {
-    return;
-  }
-  btModeLastCheckTime = currentTime;  // Only update check interval timer
-
-#ifdef BT_CLIENT
-  // Check if BLE client has connection
-  if (btConnected) {
-    PTLF("BLE Client connected, shutting down Server mode");
-    shutdownBleServer();
-    activeBtMode = BT_MODE_CLIENT;
-    return;
-  }
-#endif
-  
-#if defined BT_BLE
-  // Check if BLE server has connection to mobile app
-  if (deviceConnected) {
-    PTLF("BLE Server connected, shutting down Client mode");
-    shutdownBleClient();
-    activeBtMode = BT_MODE_SERVER;
-    return;
-  }
 #endif
 }
 
@@ -195,9 +196,6 @@ void shutdownBleServer() {
 
 void shutdownBleClient() {
 #ifdef BT_CLIENT
-  btConnected = false;
-  doConnect = false;
-  doScan = false;
-  PTLF("BLE Client scanning stopped");
+  PetoiBtStopScan();
 #endif
 }

@@ -197,6 +197,11 @@ void dealWithExceptions() {
 
 #ifdef WEB_SERVER  // check if to reset the wifi manager and reboot
   if (digitalRead(0) == LOW) {
+    delay(5);
+    // PTLF("Debounce boot button.");
+    if (digitalRead(0) != LOW)
+      return;
+
 #ifdef I2C_EEPROM_ADDRESS
     i2c_eeprom_write_byte(EEPROM_WIFI_MANAGER, true);
 #else
