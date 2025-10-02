@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "250929"  // YYMMDD
+#define DATE "251002"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -418,6 +418,11 @@ int tStep = 1;
 long loopTimer;
 byte fps = 0;
 // long wdtTimer;
+
+// Gait cycle counting variables
+int targetCycles = 0;       // Target number of gait cycles to complete
+int completedCycles = 0;    // Number of gait cycles completed so far
+bool cycleCountingMode = false;  // Whether cycle counting mode is active
 
 char token;
 char lastToken;

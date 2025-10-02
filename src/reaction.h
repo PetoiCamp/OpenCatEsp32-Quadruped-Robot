@@ -1460,13 +1460,25 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               char lastChar = skillName[strlen(skillName) - 1];
               
               if (lastChar == 'F') {
-                // Straight gait - add task with timing
-                char taskCmd[CMD_LEN + 1];
-                sprintf(taskCmd, "%s", skillName);
-                tQueue->addTask('k', taskCmd, timeOrAngle);
-                tQueue->addTask('k', "up");
-                PTH("Added straight gait task: ", taskCmd);
-                PTHL(" with time: ", timeOrAngle);
+                // Straight gait - handle cycle-based or time-based control
+                if (timeOrAngle < 200) {
+                  // Cycle-based control: count gait cycles directly
+                  cycleCountingMode = true;
+                  targetCycles = timeOrAngle;
+                  completedCycles = 0;
+                  PTH("Cycle counting mode: ", targetCycles);
+                  PTHL(" cycles, Period: ", skill->period);
+                } else {
+                  // Time-based control: use task queue with timing
+                  cycleCountingMode = false;
+                  char taskCmd[CMD_LEN + 1];
+                  sprintf(taskCmd, "%s", skillName);
+                  tQueue->addTask('k', taskCmd, timeOrAngle);
+                  tQueue->addTask('k', "up");
+                  PTH("Time-based mode: ", taskCmd);
+                  PTHL(" for ", timeOrAngle);
+                  PTL(" ms");
+                }
               } else if (lastChar == 'L' || lastChar == 'R') {
                 // Turning gait - set up turning control
                 // Note: wkR should turn counterclockwise (negative yaw), wkL should turn clockwise (positive yaw)
