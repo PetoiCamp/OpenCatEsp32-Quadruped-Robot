@@ -868,8 +868,18 @@ void getImuException() {
     while (targetDiff < -180) targetDiff += 360;
     
     // Check if we've reached or exceeded the target angle
-    if ((targetDiff > 0 && currentYawDiff >= targetDiff) || 
-        (targetDiff < 0 && currentYawDiff <= targetDiff)) {
+    // Special handling for ±180 degree boundary
+    bool targetReached = false;
+    if (fabs(targetDiff) >= 179.5) {
+      // For ~180 degree turns, check if we're close to the opposite side
+      targetReached = fabs(currentYawDiff - targetDiff) < 5.0 || fabs(fabs(currentYawDiff) - 180) < 5.0;
+    } else if (targetDiff > 0) {
+      targetReached = currentYawDiff >= targetDiff;
+    } else if (targetDiff < 0) {
+      targetReached = currentYawDiff <= targetDiff;
+    }
+    
+    if (targetReached) {
       imuException = IMU_EXCEPTION_TURNING;
       turningQ = false;  // Stop turning control
       needTurning = true;  // Set flag to prevent exception from being skipped
