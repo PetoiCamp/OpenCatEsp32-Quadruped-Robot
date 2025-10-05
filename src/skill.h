@@ -426,8 +426,25 @@ public:
         calibratedPWM(jointIndex, duty);
       }
       frame += tStep;
-      if (frame >= abs(period))
+      if (frame >= abs(period)) {
         frame = 0;
+        
+        // Check if in cycle counting mode and count completed cycles
+        if (cycleCountingMode && period > 1) {
+          completedCycles++;
+          PTH("Completed cycle: ", completedCycles);
+          PTHL(" / ", targetCycles);
+          
+          if (completedCycles >= targetCycles) {
+            // Target cycles reached, stop the gait
+            cycleCountingMode = false;
+            completedCycles = 0;
+            targetCycles = 0;
+            tQueue->addTask('k', "up");
+            PTLF("Cycle target reached, stopping gait");
+          }
+        }
+      }
     }
   }
 };

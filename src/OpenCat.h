@@ -89,7 +89,7 @@ String uniqueName = "";
 #define BT_BLE  // toggle Bluetooth Low Energy (BLE）
 #define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
 // #define WIFI_MANAGER  // toggle WiFi Manager. It should be always off for now
-#define WEB_SERVER // toggle web server
+// #define WEB_SERVER // toggle web server
 #ifndef VT
 #define GYRO_PIN  // toggle the Inertia Measurement Unit (IMU), i.e. the gyroscope
 #endif
@@ -418,6 +418,11 @@ int tStep = 1;
 long loopTimer;
 byte fps = 0;
 // long wdtTimer;
+
+// Gait cycle counting variables
+int targetCycles = 0;       // Target number of gait cycles to complete
+int completedCycles = 0;    // Number of gait cycles completed so far
+bool cycleCountingMode = false;  // Whether cycle counting mode is active
 
 char token;
 char lastToken;
