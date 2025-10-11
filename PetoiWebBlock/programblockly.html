@@ -1183,6 +1183,16 @@
       programStartTime = now; // 记录程序启动时间
       isProgramRunning = true;
       stopExecution = false; // 重置停止标志
+      // 重置会话级模式标志，确保本次运行首次调用会发送初始化指令（如 XCr / XCP、XGr / XGP）
+      if (typeof window !== 'undefined') {
+        window.__cameraActivated = false;
+        window.__cameraPolled = false;
+        window.__cameraQueryActive = false;
+        window.__lastCameraFrameKey = '';
+        window.__gestureActivated = false;
+        window.__gesturePolled = false;
+        window.__lastGestureFrameKey = '';
+      }
       if (showDebug) console.log(getText("programStartedStopExecutionFalse"));
 
       // 显示停止按钮，隐藏运行按钮，并设置停止按钮为红色背景
@@ -2243,6 +2253,7 @@ ${code}
     {
       try
       {
+        if (typeof isProgramRunning !== 'undefined' && !isProgramRunning) return;
         if (!(typeof window !== 'undefined' && window.__gestureActivated)) return;
         const s = String(lineText || '').trim();
         if (!/^\d+$/.test(s)) return;
@@ -2496,6 +2507,25 @@ Generated at: ${now.toISOString()}
         originalLog.apply(console, arguments);
         return;
       }
+      // 忽略单个空数组打印([])的情况：当获取坐标无新值且返回[]时，不在Console输出
+      if (arguments.length === 1)
+      {
+        const arg0 = arguments[0];
+        if (Array.isArray(arg0) && arg0.length === 0)
+        {
+          originalLog.apply(console, arguments);
+          return;
+        }
+        if (typeof arg0 === 'object')
+        {
+          try { if (JSON.stringify(arg0) === '[]') { originalLog.apply(console, arguments); return; } } catch(_){}
+        }
+        if (typeof arg0 === 'string' && arg0.trim() === '[]')
+        {
+          originalLog.apply(console, arguments);
+          return;
+        }
+      }
       const isDebugMessage = isDebugInfo(message);
 
       // 如果是debug信息且debug开关关闭，则不显示
@@ -2624,7 +2654,7 @@ Generated at: ${now.toISOString()}
       try
       {
         // 在 Windows 上，很多 USB-UART 桥接芯片的 VID/PID 信息无法通过 Web Serial 匹配到，
-        // 传入 filters 反而会导致原生选择器显示 “no compatible devices found”。
+        // 传入 filters 反而会导致原生选择器显示 "no compatible devices found"。
         // 因此在 Windows 上直接返回空数组，使用不带过滤器的选择器以展示所有可用的 COM 口。
         const isWindows = (navigator.platform && navigator.platform.includes('Win')) ||
           (navigator.userAgent && navigator.userAgent.includes('Windows'));
@@ -2656,7 +2686,7 @@ Generated at: ${now.toISOString()}
       }
     }
 
-    // 使用过滤器优先的串口请求封装；若因过滤器导致“no compatible devices found”，自动回退为无过滤请求
+    // 使用过滤器优先的串口请求封装；若因过滤器导致"no compatible devices found"，自动回退为无过滤请求
     async function requestSerialPortWithFallback()
     {
       const builtFilters = buildWebSerialFilters();
@@ -4365,7 +4395,7 @@ Generated at: ${now.toISOString()}
             }
           }
 
-          // 手势帧检测：扫描完整行序列中的模式 = / <0-3> / X，并同步在Console打印同一时间戳
+          // 手势帧与相机坐标帧检测：当串口有新数据打印时，立即镜像到 Console，时间戳一致
           (function detectGestureFrames(arr, tsArr){
             try {
               const consumed = new Set();
@@ -4386,7 +4416,8 @@ Generated at: ${now.toISOString()}
               }
               // 再兼容单行数值（设备可能直接输出 0/1/2/3），且在手势模式下才启用
               const gestureMode = (typeof window !== 'undefined' && !!window.__gestureActivated);
-              if (gestureMode)
+              const isRun = (typeof isProgramRunning !== 'undefined' && !!isProgramRunning);
+              if (gestureMode && isRun)
               {
                 for (let i = 0; i < arr.length; i++)
                 {
@@ -4397,6 +4428,57 @@ Generated at: ${now.toISOString()}
                     // 使用该数值行到达时的时间戳
                     const ts = tsArr[i] || nowTs;
                     mirrorGestureToConsole(s, ts);
+                  }
+                }
+              }
+
+              // 相机坐标帧镜像：仅在程序运行期间同步到 Console
+              const camRunning = (typeof window !== 'undefined' && !!window.__cameraQueryActive);
+              const mirrorCamera = (typeof window !== 'undefined' && !!window.__mirrorCameraToConsole);
+              if (camRunning && mirrorCamera) {
+                // 兼容两种格式：
+                // 1) 三行帧：= / "x y size = w h" / X
+                // 2) 单行帧：直接一行坐标（-65.00 -2.00 size = 97 138）
+                const coordRegex = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/i;
+                for (let i = 0; i + 2 < arr.length; i++)
+                {
+                  if (consumed.has(i)) continue;
+                  const a = (arr[i]||'').trim();
+                  const b = (arr[i+1]||'').trim();
+                  const c = (arr[i+2]||'').trim();
+                  const m = b.match(coordRegex);
+                  if (a === '=' && m && c === 'X')
+                  {
+                    const ts = tsArr[i] || nowTs;
+                    if (typeof window !== 'undefined') {
+                      window.__lastCameraTs = ts;
+                      window.__lastCameraCoords = [m[1], m[2], m[3], m[4]].join(',');
+                    }
+                    if (typeof window === 'undefined' || !window.__cameraMirrorDone) {
+                      addConsoleMessageAt([[m[1], m[2], m[3], m[4]].join(',')], ts);
+                      if (typeof window !== 'undefined') window.__cameraMirrorDone = true;
+                    }
+                    consumed.add(i); consumed.add(i+1); consumed.add(i+2);
+                    i += 2;
+                  }
+                }
+                // 单行坐标
+                for (let i = 0; i < arr.length; i++)
+                {
+                  if (consumed.has(i)) continue;
+                  const s = (arr[i]||'').trim();
+                  const m = s.match(coordRegex);
+                  if (m)
+                  {
+                    const ts = tsArr[i] || nowTs;
+                    if (typeof window !== 'undefined') {
+                      window.__lastCameraTs = ts;
+                      window.__lastCameraCoords = [m[1], m[2], m[3], m[4]].join(',');
+                    }
+                    if (typeof window === 'undefined' || !window.__cameraMirrorDone) {
+                      addConsoleMessageAt([[m[1], m[2], m[3], m[4]].join(',')], ts);
+                      if (typeof window !== 'undefined') window.__cameraMirrorDone = true;
+                    }
                   }
                 }
               }
@@ -4777,7 +4859,24 @@ Generated at: ${now.toISOString()}
       try
       {
         const start = Date.now();
-        let lastIndex = typeof serialBuffer === 'string' ? serialBuffer.length : 0;
+        const buf = (typeof serialBuffer === 'string') ? serialBuffer : '';
+        // 先扫描缓冲区尾部已有内容，避免在调用前刚好到达的标记被漏检
+        const preScanStart = Math.max(0, buf.length - 4096);
+        if (buf.length > 0)
+        {
+          const preTail = buf.substring(preScanStart);
+          const preNorm = preTail.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          const preLines = preNorm.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+          for (const line of preLines)
+          {
+            if (line === expectedToken)
+            {
+              return true;
+            }
+          }
+        }
+        // 然后进入增量等待，仅消费新增内容
+        let lastIndex = buf.length;
         while (Date.now() - start < timeoutMs)
         {
           const currentLen = typeof serialBuffer === 'string' ? serialBuffer.length : 0;
@@ -4795,7 +4894,7 @@ Generated at: ${now.toISOString()}
               }
             }
           }
-          await new Promise(r => setTimeout(r, 20));
+          await new Promise(r => setTimeout(r, 10));
         }
       } catch (e) { /* ignore */ }
       return false;

@@ -1187,15 +1187,12 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                     cameraReactionQ = false;
                 }
 
-                if (cameraPrintQ && cameraTaskActiveQ) {
+                if (cameraPrintQ == 1 && cameraTaskActiveQ) {
                   printToAllPorts('=');
                   showRecognitionResult(xCoord, yCoord, width, height);
                   //PTL();
                   // printToAllPorts(token);
-                  if (cameraPrintQ == 1)
-                    cameraPrintQ = 0;  // if the command is XCp, the camera will print the result only once
-                  // else
-                  //   FPS();
+                  cameraPrintQ = 0;  // if the command is XCp, the camera will print the result only once
                 }
 
                 break;
@@ -1634,6 +1631,8 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
 #ifdef WEB_SERVER
       sendCameraData(xCoord, yCoord, width, height); // Send camera data to WebSocket client
 #endif
+      lastXcoord = xCoord;
+      lastYcoord = yCoord;
     }
   } else if (!cameraTaskActiveQ)
 #endif

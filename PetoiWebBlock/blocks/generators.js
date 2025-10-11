@@ -23,9 +23,15 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", 20000, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if ((typeof window !== 'undefined') && window.petoiClient) {
+        try { webRequest("${cmd}", 20000, true); } catch(e) {}
+      } else {
+        const result = await webRequest("${cmd}", 20000, true); if (result !== null) console.log(result);
+      }
+    `) + '\n';
     // 等待完成信号再开始延时（串口模式时）：gait 指令一般以 'k' 作为完成标记
-    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', 20000); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', 20000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -50,9 +56,15 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", 10000, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if ((typeof window !== 'undefined') && window.petoiClient) {
+        try { webRequest("${cmd}", 10000, true); } catch(e) {}
+      } else {
+        const result = await webRequest("${cmd}", 10000, true); if (result !== null) console.log(result);
+      }
+    `) + '\n';
     // 等待完成信号再开始延时（串口模式时）：'k...' 返回 'k'；'d'（rest）返回 'd'
-    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, 15000); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, 15000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -144,7 +156,7 @@ Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
     // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
-    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -214,7 +226,7 @@ Blockly.JavaScript.forBlock["send_custom_command"] = function (block) {
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
     // 若自定义命令是 'm'/'k'/'d' 开头，串口模式下等待对应完成标记；否则跳过
-    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { try { const _c = ${command}; const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; if (_t && ('mkd'.includes(_t))) { await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}); } } catch(e) {} }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { try { const _c = ${command}; const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; if (_t && ('mkd'.includes(_t))) { await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}); } } catch(e) {} }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -241,7 +253,12 @@ Blockly.JavaScript.forBlock["console_log_variable"] = function (block) {
             "VARIABLE",
             Blockly.JavaScript.ORDER_NONE
         ) || '""';
-    return `console.log(${variable});\n`;
+    const trimmed = ("" + variable).trim();
+    if (/\.length\s*$/.test(trimmed)) {
+        const baseExpr = trimmed.replace(/\.length\s*$/, "");
+        return `await (async () => {\nconst __baseTmp = ${baseExpr};\nconst __baseVal = (__baseTmp && typeof __baseTmp.then === 'function') ? await __baseTmp : __baseTmp;\nconst __len = (Array.isArray(__baseVal) || typeof __baseVal === 'string') ? __baseVal.length : 0;\nconsole.log(__len);\n})();\n`;
+    }
+    return `await (async () => {\nconst __tmp = ${variable};\nconst __val = (__tmp && typeof __tmp.then === 'function') ? await __tmp : __tmp;\nif (Array.isArray(__val)) {\n  const __text = __val.length === 0\n    ? '[ ]'\n    : '[' + __val.map(v => {\n        if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(2);\n        return String(v);\n      }).join(',') + ']';\n  console.log(__text);\n} else {\n  console.log(__val);\n}\n})();\n`;
 };
 
 // 代码生成:播放音符代码生成器
@@ -279,7 +296,7 @@ Blockly.JavaScript.forBlock["play_melody"] = function (block) {
     const delayMs = Math.ceil(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}"); if (result !== null) console.log(result);`) + '\n';
     // 串口模式：等到串口回 'B'（旋律完成）后，再开始计时延时
-    code += `if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -313,7 +330,7 @@ checkStopExecution();
 await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
-  if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') {
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
     await waitForSerialTokenLine('m', 15000);
   }
   return true;
@@ -353,7 +370,7 @@ checkStopExecution();
 await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
-  if (!(typeof window !== 'undefined' && window.client) && typeof waitForSerialTokenLine === 'function') {
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
     await waitForSerialTokenLine('m', 30000);
   }
   return true;
@@ -709,20 +726,33 @@ await (async function() {
     if (typeof window !== 'undefined') window.__cameraActivated = true;
   }
   checkStopExecution();
-  // 取触发前最近的一帧 key，用于等待新帧
-  const before = (typeof window !== 'undefined' && window.__lastCameraFrameKey) ? window.__lastCameraFrameKey : '';
-  await webRequest("XCp", 5000, true);
-  // 优先等待“新的一帧”坐标，最大等待 300ms，以与串口显示同步
-  let result = await waitForNewCameraCoordinates(before, 350);
-  if (!Array.isArray(result) || result.length !== 4) {
-    // 回退：尝试直接解析传回文本或短暂再等
-    const rawTail = (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') ? serialBuffer.slice(-2000) : '';
-    result = parseCameraCoordinateResult(rawTail);
+  // 首次仅发送一次获取命令，串口返回时由串口读取钩子即时镜像坐标
+  if (typeof window === 'undefined' || !window.__cameraPolled) {
+    await webRequest("XCP", 5000, true);
+    if (typeof window !== 'undefined') window.__cameraPolled = true;
   }
-  if (!Array.isArray(result) || result.length !== 4) {
-    result = await waitForCameraCoordinates(600);
+  // 仅在检测到“新的一帧”坐标时返回；否则返回空数组
+  const beforeKey = (typeof window !== 'undefined' && window.__lastCameraFrameKey) ? window.__lastCameraFrameKey : '';
+  if (typeof window !== 'undefined') { window.__cameraQueryActive = true; window.__mirrorCameraToConsole = false; window.__cameraMirrorDone = false; }
+  let coords = [];
+  try {
+    if (typeof waitForNewCameraCoordinates === 'function') {
+      coords = await waitForNewCameraCoordinates(beforeKey, 1000);
+    } else {
+      coords = [];
+    }
+  } finally {
+    if (typeof window !== 'undefined') { window.__cameraQueryActive = false; window.__mirrorCameraToConsole = false; }
   }
-  return result;
+  if (Array.isArray(coords) && coords.length === 4) {
+    // 若串口捕获到了该帧的到达时间戳，则用该时间戳在Console先行对齐打印一次
+    if (typeof window !== 'undefined' && typeof addConsoleMessageAt === 'function' && window.__lastCameraTs && window.__lastCameraCoords) {
+      try { addConsoleMessageAt([[String(coords[0]), String(coords[1]), String(coords[2]), String(coords[3])].join(',')], window.__lastCameraTs); } catch (e) {}
+      window.__lastCameraTs = null; window.__lastCameraCoords = null;
+    }
+    return coords;
+  }
+  return [];
 })()
 `;
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
@@ -905,7 +935,7 @@ function parseCameraCoordinateResult(rawResult) {
     let parsed = extractFromText(rawResult);
     if (parsed.length === 4) return parsed;
 
-    // 2) 串口路径下，webRequest("XCp") 可能返回占位文本（如"Command sent via serial"）。
+    // 2) 串口路径下，webRequest("XCP") 可能返回占位文本（如"Command sent via serial"）。
     //    此时从全局串口缓冲区中回退解析最新一帧坐标块（优先使用全局绑定 serialBuffer，其次 window.serialBuffer）。
     try {
         let buf = '';
@@ -953,35 +983,51 @@ function getLatestCameraCoordinatesNoWait() {
         if (!buf) return { coords: [], key: '' };
 
         const norm = String(buf).replace(/\r\n/g, "\n");
-        // 找到最后一个整行的 X 标记
+        // 优先：三行帧，以 X 为结束标记
         let lastXMatch = null;
         const xRegex = /(^|\n)X(\n|$)/g;
         let m;
         while ((m = xRegex.exec(norm)) !== null) {
             lastXMatch = { index: m.index + (m[1] ? m[1].length : 0) };
         }
-        if (!lastXMatch) return { coords: [], key: '' };
-
-        const xIndex = lastXMatch.index;
-        const coordsEnd = xIndex; // 坐标行在 X 前一行
-        const coordsStart = norm.lastIndexOf('\n', coordsEnd - 1) + 1;
-        if (coordsStart < 0 || coordsStart >= coordsEnd) return { coords: [], key: '' };
-        const coordsLine = norm.substring(coordsStart, coordsEnd).trim();
-
-        // 可选的 '=' 行检查（不强制）
-        const eqEnd = coordsStart - 1;
-        const eqStart = norm.lastIndexOf('\n', eqEnd - 1) + 1;
-        const eqLine = eqStart >= 0 ? norm.substring(eqStart, eqEnd).trim() : '';
-        // 解析坐标
-        const coordsRegex = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/i;
-        const c = coordsLine.match(coordsRegex);
-        if (c) {
-            const x = parseFloat(c[1]);
-            const y = parseFloat(c[2]);
-            const w = parseFloat(c[3]);
-            const h = parseFloat(c[4]);
+        if (lastXMatch) {
+            const xIndex = lastXMatch.index;
+            const coordsEnd = xIndex; // 坐标行在 X 前一行
+            const coordsStart = norm.lastIndexOf('\n', coordsEnd - 1) + 1;
+            if (!(coordsStart < 0 || coordsStart >= coordsEnd)) {
+                const coordsLine = norm.substring(coordsStart, coordsEnd).trim();
+                const eqEnd = coordsStart - 1;
+                const eqStart = norm.lastIndexOf('\n', eqEnd - 1) + 1;
+                const eqLine = eqStart >= 0 ? norm.substring(eqStart, eqEnd).trim() : '';
+                const coordsRegex = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/i;
+                const c = coordsLine.match(coordsRegex);
+                if (c) {
+                    const x = parseFloat(c[1]);
+                    const y = parseFloat(c[2]);
+                    const w = parseFloat(c[3]);
+                    const h = parseFloat(c[4]);
+                    if ([x, y, w, h].every(v => !Number.isNaN(v))) {
+                        const key = `${eqLine}|${coordsLine}|X@${coordsStart}`;
+                        return { coords: [x, y, w, h], key };
+                    }
+                }
+            }
+        }
+        // 回退：支持单行坐标（无 X 标记）。取最后一次匹配的行
+        const coordsRegexGlobal = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+size\s*=\s*(\d+)\s+(\d+)/gi;
+        let match, last = null;
+        while ((match = coordsRegexGlobal.exec(norm)) !== null) {
+            last = { match, index: match.index };
+        }
+        if (last) {
+            const x = parseFloat(last.match[1]);
+            const y = parseFloat(last.match[2]);
+            const w = parseFloat(last.match[3]);
+            const h = parseFloat(last.match[4]);
             if ([x, y, w, h].every(v => !Number.isNaN(v))) {
-                const key = `${eqLine}|${coordsLine}|X`;
+                // 以匹配到的行文本和其起始位置作为key，避免与旧帧混淆
+                const line = last.match[0];
+                const key = `${line}@${last.index}`;
                 return { coords: [x, y, w, h], key };
             }
         }
@@ -991,7 +1037,6 @@ function getLatestCameraCoordinatesNoWait() {
     }
 }
 
-// 等待出现新的一帧坐标（与 prevKey 不同），用于与串口监视器同步
 async function waitForNewCameraCoordinates(prevKey, timeoutMs = 500) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
