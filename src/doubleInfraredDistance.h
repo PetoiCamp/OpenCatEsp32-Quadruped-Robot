@@ -212,7 +212,9 @@ void distanceNaive(float dLeft, float dRight)
       currentXDistance = min(90.0, max(-90.0, double(currentXDistance + offset / 10)));
       calibratedPWM(0, currentXDistance, 0.2);
       // PTL();
+#ifdef SHOW_FPS
       FPS();
+#endif
     }
   }
 }

@@ -232,9 +232,11 @@ while (
   }
 #endif
 
+#ifdef SHOW_FPS
   // used for FPS calculation
-  // fps = 0;
-  // loopTimer = millis();
+  fps = 0;
+  loopTimer = millis();
+#endif
 
 //   Release camera I2C lock
  #ifndef USE_WIRE1
@@ -791,10 +793,12 @@ void read_GroveVision() {
       //     Serial.println(AI.boxes()[i].h);
       //   }
       // }
-      // if (cameraPrintQ == 2 && cameraTaskActiveQ) 
-      // {
-      //   FPS();
-      // }
+#ifdef SHOW_FPS
+      if (cameraPrintQ == 2 && cameraTaskActiveQ) 
+      {
+        FPS();
+      } 
+#endif
     }
   }
 }
