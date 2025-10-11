@@ -231,8 +231,10 @@ while (
     sentry2CameraSetup();
   }
 #endif
-  fps = 0;
-  loopTimer = millis();
+
+  // used for FPS calculation
+  // fps = 0;
+  // loopTimer = millis();
 
 //   Release camera I2C lock
  #ifndef USE_WIRE1
@@ -371,11 +373,7 @@ void taskReadCamera(void *par) {
       delay(1);
     cameraLockI2c = true;
 #endif
-    if (xCoord != lastXcoord || yCoord != lastYcoord)
-    {
-      lastXcoord = xCoord;
-      lastYcoord = yCoord;
-    }
+
 #ifdef MU_CAMERA
     if (MuQ)
       read_MuCamera();
@@ -793,10 +791,10 @@ void read_GroveVision() {
       //     Serial.println(AI.boxes()[i].h);
       //   }
       // }
-      if (cameraPrintQ == 2 && cameraTaskActiveQ) 
-      {
-        FPS();
-      }
+      // if (cameraPrintQ == 2 && cameraTaskActiveQ) 
+      // {
+      //   FPS();
+      // }
     }
   }
 }
