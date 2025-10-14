@@ -93,7 +93,9 @@ void completeWebTask();
 void errorWebTask(String errorMessage);
 void processNextWebTask();
 void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
+#ifdef CAMERA
 void sendCameraData(int xCoord, int yCoord, int width, int height);
+#endif
 void sendUltrasonicData(int distance);
 void clearWebTask(String taskId);
 void checkConnectionHealth();
@@ -194,6 +196,7 @@ void checkConnectionHealth() {
   }
 }
 
+#ifdef CAMERA
 // 发送摄像头数据到所有连接的客户端
 void sendCameraData(int xCoord, int yCoord, int width, int height) {
   if (!webServerConnected || connectedClients.empty()) {
@@ -218,6 +221,7 @@ void sendCameraData(int xCoord, int yCoord, int width, int height) {
     }
   }
 }
+#endif
 
 // 发送超声波数据到所有连接的客户端
 void sendUltrasonicData(int distance) {
