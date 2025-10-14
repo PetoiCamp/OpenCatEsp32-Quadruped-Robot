@@ -167,7 +167,7 @@ void detectBle() {
     // Send connection confirmation message
 
     // for (byte i = 0; i < CONNECTION_ATTEMPT; i++) {
-    pTxCharacteristic->setValue("Petoi Bittle");
+    pTxCharacteristic->setValue((String("Petoi ") + MODEL).c_str());
     pTxCharacteristic->notify();
     //   delay(100);
     // }
