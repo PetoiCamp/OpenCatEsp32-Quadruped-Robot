@@ -141,7 +141,7 @@ void initModule(char moduleCode) {
       {
         // Detect at init whether the sensor is connected; disable if not
         bool connected = true;
-#ifdef BACKTOUCH_PIN
+// #ifdef BACKTOUCH_PIN
         pinMode(BACKTOUCH_PIN, INPUT_PULLDOWN); // avoid floating
         analogRead(BACKTOUCH_PIN);              // prime ADC channel
         delayMicroseconds(80);                  // settle
@@ -151,7 +151,7 @@ void initModule(char moduleCode) {
         if (raw != 4095) {
           connected = false;
         }
-#endif
+// #endif
         if (connected) {
           backTouchSetup();
         } else {

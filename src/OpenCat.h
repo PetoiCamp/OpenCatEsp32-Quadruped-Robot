@@ -90,6 +90,7 @@ String uniqueName = "";
 #define BT_SSP  // toggle Bluetooth Secure Simple Pairing (BT_SSP)
 // #define WIFI_MANAGER  // toggle WiFi Manager. It should be always off for now
 // #define WEB_SERVER // toggle web server
+// #define SHOW_FPS // toggle FPS display
 #ifndef VT
 #define GYRO_PIN  // toggle the Inertia Measurement Unit (IMU), i.e. the gyroscope
 #endif
