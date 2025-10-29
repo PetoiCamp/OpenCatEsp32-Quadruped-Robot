@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "251014"  // YYMMDD
+#define DATE "251028"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -372,7 +372,7 @@ bool newBoard = false;
 #define T_ACCELERATE '.'
 #define T_DECELERATE ','
 
-#define EXTENSION 'X'
+#define T_EXTENSION 'X'
 #define EXTENSION_GROVE_SERIAL 'S'  // connect to Grove UART2
 #define EXTENSION_VOICE \
   'A'  // connect to Grove UART2 (on V0_*: a slide switch can choose the voice or the Grove), or UART1 (on V1). Hidden

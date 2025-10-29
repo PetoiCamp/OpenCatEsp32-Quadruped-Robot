@@ -163,7 +163,7 @@ float readUltrasonic(int trigger, int echo = -1) {  // give two parameters for t
   // give one parameter for the one pin ultrasonic sensor that shares the trigger and echo pins
   if (echo == -1)
     echo = trigger;
-  int longestDistance = 200;  // 200 cm = 2 meters
+  int longestDistance = 200;  // 200 cm = 2 meters. the sensor can only measure up to 200 cm or less. 
   float farTime = longestDistance * 2 / 0.034;
   pinMode(trigger, OUTPUT);
 
@@ -177,5 +177,8 @@ float readUltrasonic(int trigger, int echo = -1) {  // give two parameters for t
   // Reads the echoPin, returns the sound wave travel time in microseconds
   long duration = pulseIn(echo, HIGH, farTime);
   // Calculating the distance
-  return duration * 0.034 / 2;  // 10^-6 * 34000 cm/s
+  if (duration == 0)
+    return -1;
+  else
+    return duration * 0.034 / 2;  // 10^-6 * 34000 cm/s
 }

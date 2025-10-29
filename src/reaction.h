@@ -357,7 +357,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       idleTimer = millis();
     if (newCmdIdx < 5 && lowerToken != T_BEEP && token != T_MEOW && token != T_LISTED_BIN
         && token != T_INDEXED_SIMULTANEOUS_BIN && token != T_TILT && token != T_READ && token != T_WRITE
-        && token != T_JOYSTICK)
+        && token != T_JOYSTICK && token != T_EXTENSION)
       beep(15 + newCmdIdx, 5);  // ToDo: check the muted sound when newCmdIdx = -1
     if (!workingStiffness
         && (lowerToken == T_SKILL || lowerToken == T_INDEXED_SEQUENTIAL_ASC
@@ -1138,7 +1138,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
           }
           break;
         }
-      case EXTENSION:
+      case T_EXTENSION:
         {
           // PTH("cmdLen = ", cmdLen);
           if (newCmd[0] == '?')
