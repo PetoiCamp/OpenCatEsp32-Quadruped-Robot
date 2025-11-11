@@ -21,8 +21,11 @@ int8_t touchPadIdx;
 int8_t backTouchID() {
   int touchReading = analogRead(BACKTOUCH_PIN);
   // PTT(touchReading, '\t');
-  if (touchReading < 3000)
+  if (touchReading < 2400)
+  {
+    // PTHL("touchReading is:", touchReading);
     return touchPadMap[touchReading / 600] ;
+  }
   else
     return 0;
 }

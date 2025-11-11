@@ -10,37 +10,38 @@
 
 template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
+  String textResponse = String(text);
+  if (newLine) {
+    textResponse += "\r\n";
+  }
 #ifdef BT_BLE
-  if (deviceConnected)
-    bleWrite(String(text));
+  if (deviceConnected) {
+    if (textResponse.length() > 10) {
+      // 分段发送，每次最多发送10个字符
+      for (int i = 0; i < textResponse.length(); i += 10) {
+        int endIndex = min(i + 10, (int)textResponse.length());
+        bleWrite(textResponse.substring(i, endIndex));
+      }
+    } else {
+      bleWrite(textResponse);
+    }
+  }
 #endif
 #ifdef BT_SSP
   if (BTconnected) {
-    SerialBT.print(text);
-    if (newLine)
-      SerialBT.println();
+    SerialBT.print(textResponse);
   }
 #endif
 #ifdef WEB_SERVER
   if (cmdFromWeb) {
-    if (String(text) != "=") {
-      webResponse += String(text);
-      if (newLine)
-        webResponse += '\n';
+    if (textResponse != "=") {
+      webResponse += textResponse;
     }
   }
 #endif
   if (moduleActivatedQ[0]) { // serial2
-    Serial2.print(text);
-    if (newLine)
-    {
-      Serial2.println();
-    }
+    Serial2.print(textResponse);
   }
 
-  PT(text);
-  if (newLine)
-  {
-    PTL();
-  }
+  PT(textResponse);
 }
