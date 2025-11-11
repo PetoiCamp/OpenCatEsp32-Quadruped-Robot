@@ -9,19 +9,19 @@
 #define UL_LIMIT_MID 10
 #define UL_LIMIT_MAX 400
 
-#define RGB_RED 0x220000
-#define RGB_GREEN 0x002200
-#define RGB_BLUE 0x000022
-#define RGB_YELLOW 0x222200
-#define RGB_PURPLE 0x220022
-#define RGB_WHITE 0x222222
+// #define RGB_RED 0x220000
+// #define RGB_GREEN 0x002200
+// #define RGB_BLUE 0x000022
+// #define RGB_YELLOW 0x222200
+// #define RGB_PURPLE 0x220022
+// #define RGB_WHITE 0x222222
 
-// #define RGB_RED     0xFF0000
-// #define RGB_GREEN   0x00FF00
-// #define RGB_BLUE    0x0000FF
-// #define RGB_YELLOW  0xFFFF00
-// #define RGB_PURPLE  0xFF00FF
-// #define RGB_WHITE   0xFFFFFF
+#define RGB_RED     0xFF0000
+#define RGB_GREEN   0x00FF00
+#define RGB_BLUE    0x0000FF
+#define RGB_YELLOW  0xFFFF00
+#define RGB_PURPLE  0xFF00FF
+#define RGB_WHITE   0xFFFFFF
 
 typedef enum {
   E_RGB_ALL = 0,
