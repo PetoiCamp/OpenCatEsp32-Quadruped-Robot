@@ -16,16 +16,11 @@ void printToAllPorts(T text, bool newLine = true) {
   }
 #ifdef BT_BLE
   if (deviceConnected) {
-    if (textResponse.length() > 10) {
-      // 分段发送，每次最多发送10个字符
-      for (int i = 0; i < textResponse.length(); i += 10) {
-        int endIndex = min(i + 10, (int)textResponse.length());
-        bleWrite(textResponse.substring(i, endIndex));
-      }
-    } else {
-      bleWrite(textResponse);
+    for (int i = 0; i < textResponse.length(); i += 10) {
+      int endIndex = min(i + 10, (int)textResponse.length());
+      bleWrite(textResponse.substring(i, endIndex));
     }
-  }
+  } 
 #endif
 #ifdef BT_SSP
   if (BTconnected) {
