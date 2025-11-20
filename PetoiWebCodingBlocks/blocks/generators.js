@@ -23,14 +23,11 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
+    // WiFi模式和串口模式都等待命令完成
     let code = wrapAsyncOperation(`
-      if ((typeof window !== 'undefined') && window.petoiClient) {
-        try { webRequest("${cmd}", 20000, true); } catch(e) {}
-      } else {
-        const result = await webRequest("${cmd}", 20000, true); if (result !== null) console.log(result);
-      }
+      const result = await webRequest("${cmd}", 20000, true);
     `) + '\n';
-    // 等待完成信号再开始延时（串口模式时）：gait 指令一般以 'k' 作为完成标记
+    // 串口模式时等待完成信号：gait 指令一般以 'k' 作为完成标记
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', 20000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
@@ -56,14 +53,11 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     
+    // WiFi模式和串口模式都等待命令完成
     let code = wrapAsyncOperation(`
-      if ((typeof window !== 'undefined') && window.petoiClient) {
-        try { webRequest("${cmd}", 10000, true); } catch(e) {}
-      } else {
-        const result = await webRequest("${cmd}", 10000, true); if (result !== null) console.log(result);
-      }
+      const result = await webRequest("${cmd}", 10000, true);
     `) + '\n';
-    // 等待完成信号再开始延时（串口模式时）：'k...' 返回 'k'；'d'（rest）返回 'd'
+    // 串口模式时等待完成信号：'k...' 返回 'k'；'d'（rest）返回 'd'
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, 15000); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
@@ -111,7 +105,6 @@ Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
     let code = wrapAsyncOperation(`
         try {
             const result = await webRequest("${command}", 15000, true);
-            if (result !== null) console.log(result);
         } catch (error) {
             console.error("音调列表发送失败:", error);
             // 如果字节数组发送失败，尝试逐个发送音符
@@ -154,7 +147,7 @@ Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);`) + '\n';
     // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}); }\n`;
     if (delayMs > 0) {
@@ -203,7 +196,7 @@ Blockly.JavaScript.forBlock["gyro_control"] = function (block) {
     const state = block.getFieldValue("STATE");
     const value = state === "1" ? "U" : "u";
     const command = encodeCommand("g", [value]);
-    return wrapAsyncOperation(`const result = await webRequest("${command}", 5000, true); if (result !== null) console.log(result);`) + '\n';
+    return wrapAsyncOperation(`const result = await webRequest("${command}", 5000, true);`) + '\n';
 };
 
 // 代码生成:获取传感器输入代码生成器
@@ -224,7 +217,7 @@ Blockly.JavaScript.forBlock["send_custom_command"] = function (block) {
     );
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
     // 若自定义命令是 'm'/'k'/'d' 开头，串口模式下等待对应完成标记；否则跳过
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { try { const _c = ${command}; const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; if (_t && ('mkd'.includes(_t))) { await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}); } } catch(e) {} }\n`;
     if (delayMs > 0) {
@@ -265,7 +258,7 @@ Blockly.JavaScript.forBlock["console_log_variable"] = function (block) {
 Blockly.JavaScript.forBlock["play_note"] = function (block) {
     const note = block.getFieldValue("NOTE");
     const duration = block.getFieldValue("DURATION");
-    return wrapAsyncOperation(`const result = await webRequest("b ${note} ${duration}", 5000, true); if (result !== null) console.log(result);`) + '\n';
+    return wrapAsyncOperation(`const result = await webRequest("b ${note} ${duration}", 5000, true);`) + '\n';
 };
 
 // 代码生成:播放旋律代码生成器
@@ -294,7 +287,7 @@ Blockly.JavaScript.forBlock["play_melody"] = function (block) {
     
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.ceil(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}"); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}");`) + '\n';
     // 串口模式：等到串口回 'B'（旋律完成）后，再开始计时延时
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}); }\n`;
     if (delayMs > 0) {
@@ -420,7 +413,7 @@ javascript.javascriptGenerator.forBlock["set_joints_angle_sim_raw"] = function (
         const delay = block.getFieldValue("DELAY");
         const delayMs = Math.ceil(delay * 1000);
         const command = encodeCommand(token, angleParams);
-        let code = wrapAsyncOperation(`const result = await webRequest("${command}", 30000, true); if (result !== null) console.log(result);`) + '\n';
+        let code = wrapAsyncOperation(`const result = await webRequest("${command}", 30000, true);`) + '\n';
         if (delayMs > 0) {
             // 对于长时间延时，分段检查停止标志
             if (delayMs > 100) {
@@ -541,7 +534,7 @@ javascript.javascriptGenerator.forBlock["arm_action"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -577,7 +570,7 @@ javascript.javascriptGenerator.forBlock["action_skill_file"] = function (
     const token = skillContent.token;
     const list = skillContent.data.flat();
     const cmd = encodeCommand(token, list);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true); if (result !== null) console.log(result);`) + '\n';
+    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
     if (delay > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delay > 100) {
@@ -619,7 +612,7 @@ Blockly.JavaScript.forBlock["set_analog_output"] = function (
 ) {
     const pin = block.getFieldValue("PIN");
     const value = Blockly.JavaScript.valueToCode(block, "VALUE", Blockly.JavaScript.ORDER_ATOMIC) || "128";
-    return wrapAsyncOperation(`const analogValue = ${value}; const command = encodeCommand("Wa", ["${pin}", analogValue]); const result = await webRequest(command, 5000, true); if (result !== null) console.log(result);`) + '\n';
+    return wrapAsyncOperation(`const analogValue = ${value}; const command = encodeCommand("Wa", ["${pin}", analogValue]); const result = await webRequest(command, 5000, true);`) + '\n';
 };
 
 // 代码生成:设置数字输出的代码
@@ -629,7 +622,7 @@ Blockly.JavaScript.forBlock["set_digital_output"] = function (
     const pin = block.getFieldValue("PIN");
     const value = block.getFieldValue("STATE");
     const command = encodeCommand("Wd", [pin, value]);
-    return wrapAsyncOperation(`const result = await webRequest("${command}", 5000, true); if (result !== null) console.log(result);`) + '\n';
+    return wrapAsyncOperation(`const result = await webRequest("${command}", 5000, true);`) + '\n';
 };
 
 // 代码生成:获取数字输入代码生成器 - 只在showDebug下自动打印

@@ -110,25 +110,36 @@ function webRequest(command, timeout = TIMEOUT_CONFIG.WEB_REQUEST.DEFAULT_TIMEOU
           return;
         }
         
-        // 如果showSentCommands开关激活，打印发送的命令
+        // 如果showSentCommands开关激活，在Console Log中显示发送的命令
         if (typeof showSentCommands !== 'undefined' && showSentCommands) {
-          // 使用displayCommand参数或默认处理
-          let commandToDisplay = displayCommand || command;
-          if (!displayCommand && command.startsWith("b64:")) {
-            try {
-              const decoded = decodeCommand(command);
-              if (decoded && decoded.token && decoded.params) {
-                commandToDisplay = `${decoded.token} ${decoded.params.join(" ")}`;
+          // 调用logSentCommand显示在Console Log中（如果该函数存在）
+          if (typeof logSentCommand === 'function') {
+            logSentCommand(command);
+          } else {
+            // 回退到console.log（兼容旧版本）
+            let commandToDisplay = displayCommand || command;
+            if (!displayCommand && command.startsWith("b64:")) {
+              try {
+                const decoded = decodeCommand(command);
+                if (decoded && decoded.token && decoded.params) {
+                  commandToDisplay = `${decoded.token} ${decoded.params.join(" ")}`;
+                }
+              } catch (error) {
+                // 如果解码失败，保持原命令
+                commandToDisplay = command;
               }
-            } catch (error) {
-              // 如果解码失败，保持原命令
-              commandToDisplay = command;
             }
+            console.log(getText("sendingCommand") + commandToDisplay);
           }
-          console.log(getText("sendingCommand") + commandToDisplay);
         }
         
         let result = await window.client.sendCommand(command, timeout);
+        
+        // 在Console Log中显示响应（如果showSentCommands开关激活）
+        if (typeof showSentCommands !== 'undefined' && showSentCommands && typeof logCommandResponse === 'function') {
+          logCommandResponse(result);
+        }
+        
         if (Array.isArray(result) && result.length == 1) {
           result = result[0];
         }
@@ -154,26 +165,45 @@ function webBatchRequest(commands, timeout = TIMEOUT_CONFIG.WEB_REQUEST.BATCH_RE
         return;
       }
       
-      // 如果showSentCommands开关激活，打印发送的命令
+      // 如果showSentCommands开关激活，在Console Log中显示发送的命令
       if (typeof showSentCommands !== 'undefined' && showSentCommands) {
-        // 解码base64命令并显示可读格式
-        const displayCommands = commands.map(cmd => {
-          if (cmd.startsWith("b64:")) {
-            try {
-              const decoded = decodeCommand(cmd);
-              if (decoded && decoded.token && decoded.params) {
-                return `${decoded.token} ${decoded.params.join(" ")}`;
+        // 调用logSentCommand显示在Console Log中（如果该函数存在）
+        if (typeof logSentCommand === 'function') {
+          // 对每个命令单独调用logSentCommand
+          commands.forEach(cmd => {
+            logSentCommand(cmd);
+          });
+        } else {
+          // 回退到console.log（兼容旧版本）
+          const displayCommands = commands.map(cmd => {
+            if (cmd.startsWith("b64:")) {
+              try {
+                const decoded = decodeCommand(cmd);
+                if (decoded && decoded.token && decoded.params) {
+                  return `${decoded.token} ${decoded.params.join(" ")}`;
+                }
+              } catch (error) {
+                // 如果解码失败，保持原命令
               }
-            } catch (error) {
-              // 如果解码失败，保持原命令
             }
-          }
-          return cmd;
-        });
-        console.log(getText("sendingCommand") + displayCommands.join(', '));
+            return cmd;
+          });
+          console.log(getText("sendingCommand") + displayCommands.join(', '));
+        }
       }
       
       const result = await window.client.sendCommand(commands, timeout);
+      
+      // 在Console Log中显示响应（如果showSentCommands开关激活）
+      if (typeof showSentCommands !== 'undefined' && showSentCommands && typeof logCommandResponse === 'function') {
+        // 对于批量命令，显示所有响应
+        if (Array.isArray(result)) {
+          result.forEach(res => logCommandResponse(res));
+        } else {
+          logCommandResponse(result);
+        }
+      }
+      
       resolve(needResponse ? result : true);
     } catch (error)
     {

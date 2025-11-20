@@ -1283,11 +1283,19 @@ async function serialRequest(command, timeout = 5000, isRest = false, expectedRe
           wifiCommand = "b64:" + btoa(dataText);
         }
         
+        // 在发送命令前记录到Console Log
+        if (showSentCommands && typeof logSentCommand === 'function') {
+          logSentCommand(wifiCommand);
+        }
+        
         // 使用WiFi发送命令
         const result = await window.petoiClient.sendCommand(wifiCommand, timeout, expectedResponse);
-        if (showSentCommands) {
-          console.log(getText("sendingCommandViaWiFi") + ": " + (command.startsWith("bytes:") ? getText("byteArrayConvertedToBase64") : command));
+        
+        // 在收到响应后记录到Console Log
+        if (showSentCommands && typeof logCommandResponse === 'function') {
+          logCommandResponse(result);
         }
+        
         return result;
       } catch (wifiError) {
         console.error(getText("wiFiConnectionFailed") + ":", wifiError);
@@ -1372,10 +1380,18 @@ async function serialRequest(command, timeout = 5000, isRest = false, expectedRe
           wifiCommand = "b64:" + btoa(dataText);
         }
         
-        const result = await window.petoiClient.sendCommand(wifiCommand, timeout, expectedResponse);
-        if (showSentCommands) {
-          console.log(getText("sendingCommandViaWiFi") + ": " + (command.startsWith("bytes:") ? getText("byteArrayConvertedToBase64") : command));
+        // 在发送命令前记录到Console Log
+        if (showSentCommands && typeof logSentCommand === 'function') {
+          logSentCommand(wifiCommand);
         }
+        
+        const result = await window.petoiClient.sendCommand(wifiCommand, timeout, expectedResponse);
+        
+        // 在收到响应后记录到Console Log
+        if (showSentCommands && typeof logCommandResponse === 'function') {
+          logCommandResponse(result);
+        }
+        
         return result;
       } catch (wifiError) {
         console.error(getText("wiFiConnectionAlsoFailed") + ":", wifiError);
@@ -1533,10 +1549,18 @@ async function webRequest(command, timeout = 5000, isRest = false, expectedRespo
       finalCommand = "b64:" + btoa(dataText);
     }
     
-    const result = await window.petoiClient.sendCommand(finalCommand, timeout, expectedResponse);
-    if (showSentCommands) {
-      console.log(getText("sendingCommand") + ": " + (command.startsWith("bytes:") ? getText("byteArrayConvertedToBase64") : command));
+    // 在发送命令前记录到Console Log
+    if (showSentCommands && typeof logSentCommand === 'function') {
+      logSentCommand(finalCommand);
     }
+    
+    const result = await window.petoiClient.sendCommand(finalCommand, timeout, expectedResponse);
+    
+    // 在收到响应后记录到Console Log
+    if (showSentCommands && typeof logCommandResponse === 'function') {
+      logCommandResponse(result);
+    }
+    
     return result;
   } catch (error) {
     console.error(getText("webSocketSendError") + ":", error);
@@ -2234,6 +2258,145 @@ ${code}
       const messageSpan = document.createElement('span');
       messageSpan.className = 'message-content';
       messageSpan.textContent = `${messageText} `;
+
+      messageDiv.appendChild(timestampSpan);
+      messageDiv.appendChild(messageSpan);
+      logDiv.appendChild(messageDiv);
+
+      while (logDiv.children.length > 500)
+      {
+        logDiv.removeChild(logDiv.firstChild);
+      }
+
+      logDiv.scrollTop = logDiv.scrollHeight;
+      void logDiv.offsetHeight;
+    }
+
+    // 在Console Log中显示发送的命令（类似Serial Monitor）
+    function logSentCommand(command)
+    {
+      if (!showSentCommands) {
+        return;
+      }
+
+      const logDiv = document.getElementById('consoleLog');
+      const showTimestamp = document.getElementById('showTimestampBtn').classList.contains('active');
+      const timestampStr = getFormattedTimestamp();
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'console-item';
+
+      // 解码命令以显示可读格式
+      let displayCommand = command;
+      if (command.startsWith("b64:")) {
+        try {
+          const decoded = atob(command.substring(4));
+          // 提取命令的第一个字符作为token
+          if (decoded.length > 0) {
+            displayCommand = decoded.charAt(0);
+            // 如果有参数，也显示出来
+            if (decoded.length > 1) {
+              const params = [];
+              for (let i = 1; i < decoded.length; i++) {
+                const code = decoded.charCodeAt(i);
+                if (code !== 126) { // 忽略结束符 '~'
+                  params.push(code);
+                }
+              }
+              if (params.length > 0) {
+                displayCommand += ' ' + params.join(' ');
+              }
+            }
+          }
+        } catch (error) {
+          displayCommand = command; // 解码失败时保持原样
+        }
+      } else if (command.startsWith("bytes:")) {
+        try {
+          const byteArrayStr = command.substring(6);
+          const byteArray = JSON.parse(byteArrayStr);
+          if (byteArray.length > 0) {
+            const token = String.fromCharCode(byteArray[0]);
+            displayCommand = token;
+            if (byteArray.length > 1) {
+              const params = [];
+              for (let i = 1; i < byteArray.length; i++) {
+                if (byteArray[i] !== 126) { // 忽略结束符 '~'
+                  params.push(byteArray[i]);
+                }
+              }
+              if (params.length > 0) {
+                displayCommand += ' ' + params.join(' ');
+              }
+            }
+          }
+        } catch (error) {
+          displayCommand = command; // 解析失败时保持原样
+        }
+      }
+
+      const timestampSpan = document.createElement('span');
+      timestampSpan.className = 'timestamp';
+      timestampSpan.textContent = `${timestampStr} `;
+      timestampSpan.style.display = showTimestamp ? 'inline' : 'none';
+      timestampSpan.style.color = '#888';
+
+      const messageSpan = document.createElement('span');
+      messageSpan.className = 'message-content';
+      messageSpan.textContent = displayCommand;
+      messageSpan.style.color = '#4CAF50'; // 使用绿色显示发送的命令
+
+      messageDiv.appendChild(timestampSpan);
+      messageDiv.appendChild(messageSpan);
+      logDiv.appendChild(messageDiv);
+
+      while (logDiv.children.length > 500)
+      {
+        logDiv.removeChild(logDiv.firstChild);
+      }
+
+      logDiv.scrollTop = logDiv.scrollHeight;
+      void logDiv.offsetHeight;
+    }
+
+    // 在Console Log中显示命令响应（类似Serial Monitor）
+    function logCommandResponse(response)
+    {
+      if (!showSentCommands) {
+        return;
+      }
+
+      const logDiv = document.getElementById('consoleLog');
+      const showTimestamp = document.getElementById('showTimestampBtn').classList.contains('active');
+      const timestampStr = getFormattedTimestamp();
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'console-item';
+
+      // 处理响应数据
+      let displayResponse = '';
+      if (Array.isArray(response)) {
+        // 如果是数组，取第一个元素
+        displayResponse = response.length > 0 ? String(response[0]) : '';
+      } else if (response !== null && response !== undefined) {
+        displayResponse = String(response);
+      }
+
+      // 忽略空响应
+      if (!displayResponse.trim()) {
+        return;
+      }
+
+      const timestampSpan = document.createElement('span');
+      timestampSpan.className = 'timestamp';
+      timestampSpan.textContent = `${timestampStr} `;
+      timestampSpan.style.display = showTimestamp ? 'inline' : 'none';
+      timestampSpan.style.color = '#888';
+
+      const messageSpan = document.createElement('span');
+      messageSpan.className = 'message-content';
+      messageSpan.textContent = displayResponse;
+      messageSpan.style.color = '#FFA500'; // 使用橙色显示响应
 
       messageDiv.appendChild(timestampSpan);
       messageDiv.appendChild(messageSpan);
