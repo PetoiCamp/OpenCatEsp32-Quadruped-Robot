@@ -111,6 +111,8 @@ Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
             ${generateFallbackNotes(tones)}
         }
     `) + '\n';
+    // 串口模式：等到串口回 'B'（音调列表完成）后，再开始计时延时
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', 15000); }\n`;
     
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
@@ -364,7 +366,7 @@ await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
   if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
-    await waitForSerialTokenLine('m', 30000);
+    await waitForSerialTokenLine('i', 30000);
   }
   return true;
 })()
@@ -453,6 +455,9 @@ checkStopExecution();
 await (async function() {
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+    await waitForSerialTokenLine('m', 15000);
+  }
   return true;
 })()
 `
@@ -535,6 +540,8 @@ javascript.javascriptGenerator.forBlock["arm_action"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
+    // 机械臂动作通常是技能类（k开头），串口模式下等待'k'完成标记
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, ${LONG_COMMAND_TIMEOUT}); }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -571,6 +578,8 @@ javascript.javascriptGenerator.forBlock["action_skill_file"] = function (
     const list = skillContent.data.flat();
     const cmd = encodeCommand(token, list);
     let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
+    // 串口模式：根据技能文件的token类型等待对应完成标记
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('${token}', ${LONG_COMMAND_TIMEOUT}); }\n`;
     if (delay > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delay > 100) {
