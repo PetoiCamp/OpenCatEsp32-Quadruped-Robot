@@ -186,11 +186,11 @@ void initModule(char moduleCode) {
 #endif
   }
   moduleActivatedQ[index] = successQ;
-#ifdef I2C_EEPROM_ADDRESS
-  i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + index, successQ);
-#else
-  config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
-#endif
+// #ifdef I2C_EEPROM_ADDRESS
+//   i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + index, successQ);
+// #else
+//   config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
+// #endif
 }
 
 void stopModule(char moduleCode) {
@@ -326,14 +326,9 @@ void reconfigureTheActiveModule(char *moduleCode) {
     stopModule(moduleList[i]);
     moduleActivatedQ[i] = false;
     statusChangedQ = true;
-#ifdef I2C_EEPROM_ADDRESS
-    i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + i, false);
-#endif
+
   }
-#ifndef I2C_EEPROM_ADDRESS
-  config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
-#endif
-  
+
   // Original logic: enable target module (skip for close-only operations)
   if (!isCloseOnlyOperation) {
     for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++) {
@@ -344,6 +339,13 @@ void reconfigureTheActiveModule(char *moduleCode) {
       }
     }
   }
+
+#ifdef I2C_EEPROM_ADDRESS
+  i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + i, false);
+#else
+  config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
+#endif
+
   if (statusChangedQ)  // if the status of the modules has changed, show the new status
     showModuleStatus();
 }
