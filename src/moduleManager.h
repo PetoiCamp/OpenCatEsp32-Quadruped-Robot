@@ -338,17 +338,17 @@ void reconfigureTheActiveModule(char *moduleCode) {
         statusChangedQ = true;
       }
     }
+  }
+
+  if (statusChangedQ){  // if the status of the modules has changed, show the new status
 #ifndef I2C_EEPROM_ADDRESS
     config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
 #endif
-  }
-
-  if (statusChangedQ)  // if the status of the modules has changed, show the new status
     showModuleStatus();
-
-  for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++) {
-    if (moduleList[i] == targetModule && moduleActivatedQ[i]) {
-      initModule(moduleList[i]);
+    for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++) {
+      if (moduleList[i] == targetModule && moduleActivatedQ[i]) {
+        initModule(moduleList[i]);
+      }
     }
   }
 }
