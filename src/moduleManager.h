@@ -186,11 +186,6 @@ void initModule(char moduleCode) {
 #endif
   }
   moduleActivatedQ[index] = successQ;
-// #ifdef I2C_EEPROM_ADDRESS
-//   i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + index, successQ);
-// #else
-//   config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
-// #endif
 }
 
 void stopModule(char moduleCode) {
@@ -326,7 +321,6 @@ void reconfigureTheActiveModule(char *moduleCode) {
     stopModule(moduleList[i]);
     moduleActivatedQ[i] = false;
     statusChangedQ = true;
-
   }
 
   // Original logic: enable target module (skip for close-only operations)
