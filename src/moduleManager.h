@@ -331,21 +331,26 @@ void reconfigureTheActiveModule(char *moduleCode) {
     for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++) {
       if (moduleList[i] == targetModule && !moduleActivatedQ[i]) {
         PTHL("+  enable", moduleNames[i]);
-        initModule(moduleList[i]);
-        statusChangedQ = true;
+        moduleActivatedQ[i] = true;
 #ifdef I2C_EEPROM_ADDRESS
         i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + i, true);
 #endif
+        statusChangedQ = true;
       }
     }
-  }
-
 #ifndef I2C_EEPROM_ADDRESS
-  config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
+    config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
 #endif
+  }
 
   if (statusChangedQ)  // if the status of the modules has changed, show the new status
     showModuleStatus();
+
+  for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++) {
+    if (moduleList[i] == targetModule && moduleActivatedQ[i]) {
+      initModule(moduleList[i]);
+    }
+  }
 }
 
 void initModuleManager() {
