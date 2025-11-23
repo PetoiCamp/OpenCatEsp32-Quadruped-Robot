@@ -1340,19 +1340,56 @@ async function serialRequest(command, timeout = 5000, isRest = false, expectedRe
       }
     }
     
+    // 在发送命令前记录到Console Log
+    if (showSentCommands && typeof logSentCommand === 'function') {
+      logSentCommand(command);
+    }
+    
     // 发送命令
     await writer.write(dataToSend);
-    if (showSentCommands) {
-      console.log(getText("sendingCommandViaSerial") + ": " + displayCommand);
+    
+    // 检查是否为查询关节角度命令
+    if (command === 'j') {
+      // 等待关节角度数据返回（格式：索引行\t角度行\tj）
+      if (typeof showDebug !== 'undefined' && showDebug) {
+        console.log(getText('debugDetectedJCommand'));
+      }
+      try {
+        const result = await waitForJointAnglesResponse(timeout);
+        if (typeof showDebug !== 'undefined' && showDebug) {
+          console.log(getText('debugJointAnglesResponseComplete'), result ? getText('debugJointAnglesResponseSuccess') : getText('debugJointAnglesResponseFailed'));
+        }
+        // 在收到响应后记录到Console Log
+        if (showSentCommands && typeof logCommandResponse === 'function') {
+          logCommandResponse(result || 'j command completed');
+        }
+        return result;
+      } catch (error) {
+        console.error(getText('debugWaitJointAnglesError'), error);
+        throw error;
+      }
     }
     
     // 如果是读取命令，等待并解析响应
     if (isReadCommand) {
-      return await waitForSerialResponse('R', timeout);
+      const result = await waitForSerialResponse('R', timeout);
+      // 在收到响应后记录到Console Log
+      if (showSentCommands && typeof logCommandResponse === 'function') {
+        logCommandResponse(result || 'Read command completed');
+      }
+      return result;
     } else {
-      // 等待一小段时间让命令执行
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return "Command sent via serial";
+      // 对于普通命令，等待并捕获串口响应（直到收到token）
+      const response = await waitForGeneralSerialResponse(command, 1000);
+      // 记录实际的串口响应
+      if (showSentCommands && typeof logCommandResponse === 'function') {
+        if (response) {
+          logCommandResponse(response);
+        } else {
+          logCommandResponse('[No response or timeout]');
+        }
+      }
+      return response || "Command sent via serial";
     }
   } catch (error) {
     console.error(getText("serialSendError") + ":", error);
@@ -1516,12 +1553,207 @@ async function waitForSerialResponse(expectedToken = 'R', timeout = 3000) {
     // 开始检查
     setTimeout(checkData, 50);
   });
+}
+
+// 等待关节角度响应的函数
+// 支持两种格式:
+// 新格式: "=\\n0 1 2 3...\\n-1, -1, 0, 0,...\\nj\\n"
+// 旧格式: "0\\t1\\t2\\t...\\n0,\\t0,\\t0,\\t...\\nj\\n"
+async function waitForJointAnglesResponse(timeout = 5000) {
+  if (typeof showDebug !== 'undefined' && showDebug) {
+    console.log(getText('debugWaitJointAnglesStart'), timeout);
+  }
+  return new Promise((resolve, reject) => {
+    let startTime = Date.now();
+    let lastBufferLength = 0;
+    
+    const checkData = () => {
+      // 检查是否超时
+      if (Date.now() - startTime > timeout) {
+        console.warn(getText('debugWaitJointAnglesTimeout'));
+        resolve(null);
+        return;
+      }
+      
+      // 直接从serialBuffer读取最新数据（不累加）
+      let currentData = '';
+      if (typeof serialBuffer !== 'undefined' && serialBuffer.length > 0) {
+        currentData = serialBuffer;
+      }
+      
+      // 按行分割数据
+      const lines = currentData.split(/\\r?\\n/);
+      
+      // 查找结束标记 'j'
+      let foundEndToken = false;
+      let tokenIndex = -1;
+      
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() === 'j') {
+          foundEndToken = true;
+          tokenIndex = i;
+          break;
+        }
+      }
+      
+      if (foundEndToken && tokenIndex >= 2) {
+        if (typeof showDebug !== 'undefined' && showDebug) {
+          console.log(getText('debugWaitJointAnglesFoundToken'), tokenIndex);
+          console.log(getText('debugWaitJointAnglesRelatedLines'), lines.slice(Math.max(0, tokenIndex - 3), tokenIndex + 1));
+        }
+        
+        let fullResponse = '';
+        let dataToProcess = [];
+        
+        // 检查是否为新格式 (前面有 '=' 标记)
+        if (tokenIndex >= 3 && lines[tokenIndex - 3].trim() === '=') {
+          if (typeof showDebug !== 'undefined' && showDebug) {
+            console.log(getText('debugRecognizedNewFormat'));
+          }
+          // 新格式: = \\n 索引行 \\n 角度行 \\n j
+          const equalLine = lines[tokenIndex - 3];
+          const indexLine = lines[tokenIndex - 2];
+          const angleLine = lines[tokenIndex - 1];
+          const endToken = lines[tokenIndex];
+          
+          fullResponse = equalLine + "\\n" + indexLine + "\\n" + angleLine + "\\n" + endToken + "\\n";
+          dataToProcess = lines.slice(0, tokenIndex + 1);
+          if (typeof showDebug !== 'undefined' && showDebug) {
+            console.log(getText('debugNewFormatResponseLength'), fullResponse.length);
+          }
+        } else {
+          if (typeof showDebug !== 'undefined' && showDebug) {
+            console.log(getText('debugRecognizedOldFormat'));
+          }
+          // 旧格式或其他格式: 索引行 \\n 角度行 \\n j
+          const indexLine = lines[tokenIndex - 2];
+          const angleLine = lines[tokenIndex - 1];
+          const endToken = lines[tokenIndex];
+          
+          fullResponse = indexLine + "\\n" + angleLine + "\\n" + endToken + "\\n";
+          dataToProcess = lines.slice(0, tokenIndex + 1);
+          if (typeof showDebug !== 'undefined' && showDebug) {
+            console.log(getText('debugOldFormatResponseLength'), fullResponse.length);
+          }
+        }
+        
+        // 清空已处理的数据部分
+        if (typeof serialBuffer !== 'undefined') {
+          // 找到 'j' 标记在原始缓冲区中的位置
+          const jMarkerIndex = serialBuffer.lastIndexOf('j\\n');
+          if (jMarkerIndex >= 0) {
+            // 从 j 标记后开始保留
+            serialBuffer = serialBuffer.substring(jMarkerIndex + 2);
+            if (typeof showDebug !== 'undefined' && showDebug) {
+              console.log(getText('debugClearBufferKeepAfterJ'), serialBuffer.length);
+            }
+          } else {
+            // 回退方案：查找单独的 j
+            const jIndex = serialBuffer.lastIndexOf('j');
+            if (jIndex >= 0) {
+              serialBuffer = serialBuffer.substring(jIndex + 1);
+              if (typeof showDebug !== 'undefined' && showDebug) {
+                console.log(getText('debugClearBufferBackupPlan'), serialBuffer.length);
+              }
+            } else {
+              // 如果都找不到，清空整个缓冲区
+              serialBuffer = '';
+              if (typeof showDebug !== 'undefined' && showDebug) {
+                console.log(getText('debugClearEntireBuffer'));
+              }
+            }
+          }
+        }
+        
+        resolve(fullResponse);
+        return;
+      } else {
+        // 继续等待数据
+        setTimeout(checkData, 50);
+      }
+    };
+    
+    // 开始检查
+    setTimeout(checkData, 50);
+  });
+}
+
+// 等待普通命令的串口响应
+// 捕获发送命令后串口返回的任何内容，直到收到命令的token字符
+async function waitForGeneralSerialResponse(command, timeout = 1000) {
+  return new Promise((resolve) => {
+    let startTime = Date.now();
+    let initialBufferLength = (typeof serialBuffer !== 'undefined') ? serialBuffer.length : 0;
+    
+    // 提取命令的 token（第一个字符）
+    const commandToken = command ? command.charAt(0).toLowerCase() : '';
+    
+    const checkData = () => {
+      // 检查是否超时
+      if (Date.now() - startTime > timeout) {
+        // 超时后返回已捕获的内容（如果有的话）
+        const captured = (typeof serialBuffer !== 'undefined' && serialBuffer.length > initialBufferLength) 
+          ? serialBuffer.substring(initialBufferLength).trim() 
+          : null;
+        resolve(captured);
+        return;
+      }
+      
+      // 检查是否有新数据
+      if (typeof serialBuffer !== 'undefined' && serialBuffer.length > initialBufferLength) {
+        // 获取新增的数据
+        const newData = serialBuffer.substring(initialBufferLength);
+        
+        // 按行分割，过滤空行
+        const lines = newData.split(/\\r?\\n/).map(l => l.trim()).filter(l => l.length > 0);
+        
+        if (lines.length === 0) {
+          // 还没有收到任何数据行，继续等待
+          setTimeout(checkData, 50);
+          return;
+        }
+        
+        // 检查最后一行是否是 token 字符
+        const lastLine = lines[lines.length - 1];
+        
+        // 如果最后一行正好是命令的 token，说明响应完整
+        if (lastLine === commandToken) {
+          // 返回完整响应（包括 token）
+          resolve(newData.trim());
+          return;
+        }
+        
+        // 如果最后一行是单字符且是已知的完成标记，也认为响应完成
+        // 这是为了兼容一些可能不严格遵循 token 规则的情况
+        if (lastLine.length === 1 && /[kdmjigbwxlr]/i.test(lastLine)) {
+          resolve(newData.trim());
+          return;
+        }
+      }
+      
+      // 继续等待
+      setTimeout(checkData, 50);
+    };
+    
+    // 稍微延迟后开始检查（给设备一点反应时间）
+    setTimeout(checkData, 50);
+  });
 }`;
 
         restCommand = 'await serialRequest("d", 5000, true);';
         closeConnectionCall = 'await closeConnection();';
 
-        // 将webRequest替换为serialRequest
+        // 设置串口模式标志，并重定向webRequest到serialRequest
+        connectionFunctions += `
+// 串口模式标志
+window.__isSerialMode = true;
+
+// 在串口模式下，将webRequest重定向到serialRequest
+// 这样generators.js中的encodeMoveCommand函数也能正常工作
+window.webRequest = serialRequest;
+`;
+
+        // 将生成代码中的webRequest替换为serialRequest
         code = code.replace(/webRequest\(/g, 'serialRequest(');
       } else
       {
@@ -4057,7 +4289,7 @@ Generated at: ${now.toISOString()}
       // 如果不是强制显示，检查是否已经显示过WiFi配置对话框
       if (!forceShow && hasShownWifiDialog)
       {
-        if (showDebug) console.log('WiFi配置对话框已在本次会话中显示过，跳过显示');
+        if (showDebug) console.log(getText('debugWiFiDialogAlreadyShown'));
         return;
       }
 

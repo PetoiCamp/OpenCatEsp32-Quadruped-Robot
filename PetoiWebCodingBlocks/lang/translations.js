@@ -497,7 +497,51 @@ const TRANSLATIONS = {
     "webSocketConnectionUnavailable": "WebSocket连接不可用",
     "programExecutionStoppedByUser": "程序执行被用户停止",
     "tokenNotFound": "未找到Token",
-    "dataNotFound": "未找到Data"
+    "dataNotFound": "未找到Data",
+    
+    // Debug Info - Joint Angles (调试信息 - 关节角度)
+    "debugDetectedRelativeAngles": "检测到相对角度，需要查询当前关节角度...",
+    "debugCurrentMode": "当前模式:",
+    "debugSerialMode": "串口模式",
+    "debugWiFiMode": "WiFi模式",
+    "debugQueryJCommandRaw": "查询 j 命令原始返回:",
+    "debugParsedJointAngles": "解析后的关节角度数组:",
+    "debugSuccessGetJointAngles": "成功获取关节角度，数量:",
+    "debugParseAllJointsStart": "parseAllJointsResult 开始解析，原始数据类型:",
+    "debugParseAllJointsRawLength": "parseAllJointsResult 原始数据长度:",
+    "debugParseAllJointsSplitLines": "parseAllJointsResult 分割后的行数:",
+    "debugParseAllJointsLineContent": "parseAllJointsResult 每行内容:",
+    
+    // Debug Info - Wait for Joint Angles Response (调试信息 - 等待关节角度响应)
+    "debugWaitJointAnglesStart": "waitForJointAnglesResponse 开始等待，超时时间:",
+    "debugWaitJointAnglesTimeout": "等待关节角度响应超时",
+    "debugWaitJointAnglesFoundToken": "waitForJointAnglesResponse 找到结束标记 j，位置:",
+    "debugWaitJointAnglesRelatedLines": "waitForJointAnglesResponse 相关行内容:",
+    "debugRecognizedNewFormat": "识别为新格式（包含=标记）",
+    "debugRecognizedOldFormat": "识别为旧格式或其他格式",
+    "debugNewFormatResponseLength": "新格式完整响应长度:",
+    "debugOldFormatResponseLength": "旧格式完整响应长度:",
+    "debugClearBufferKeepAfterJ": "清空缓冲区，保留 j 标记后的数据，剩余长度:",
+    "debugClearBufferBackupPlan": "清空缓冲区（备用方案），剩余长度:",
+    "debugClearEntireBuffer": "清空整个缓冲区",
+    "debugJointAnglesResponseComplete": "关节角度响应接收完成:",
+    "debugJointAnglesResponseSuccess": "成功",
+    "debugJointAnglesResponseFailed": "失败",
+    "debugWaitJointAnglesError": "等待关节角度响应时出错:",
+    
+    // Debug Info - WiFi Dialog (调试信息 - WiFi对话框)
+    "debugWiFiDialogAlreadyShown": "WiFi配置对话框已在本次会话中显示过，跳过显示",
+    
+    // Debug Info - REST Command (调试信息 - REST命令)
+    "debugRestCommandSent": "Rest命令发送成功",
+    
+    // Debug Info - Additional Messages (调试信息 - 其他消息)
+    "debugDetectedJCommand": "检测到 j 命令，开始等待关节角度响应...",
+    "debugConnectionFailed": "连接失败，后续操作可能无法正常执行",
+    "debugConnectionError": "连接错误:",
+    "debugCannotGetJointAngles": "无法获取当前关节角度，使用默认值(0)。相对角度可能不准确。",
+    "debugUseDefaultJointAngles": "使用默认关节角度值(0)",
+    "debugToneListSendFailed": "音调列表发送失败:"
   },
 
   en: {
@@ -997,7 +1041,51 @@ const TRANSLATIONS = {
     "webSocketConnectionUnavailable": "WebSocket connection unavailable",
     "programExecutionStoppedByUser": "Program execution stopped by user",
     "tokenNotFound": "Token not found",
-    "dataNotFound": "Data not found"
+    "dataNotFound": "Data not found",
+    
+    // Debug Info - Joint Angles
+    "debugDetectedRelativeAngles": "Detected relative angles, need to query current joint angles...",
+    "debugCurrentMode": "Current mode:",
+    "debugSerialMode": "Serial mode",
+    "debugWiFiMode": "WiFi mode",
+    "debugQueryJCommandRaw": "Query j command raw return:",
+    "debugParsedJointAngles": "Parsed joint angles array:",
+    "debugSuccessGetJointAngles": "Successfully got joint angles, count:",
+    "debugParseAllJointsStart": "parseAllJointsResult starts parsing, raw data type:",
+    "debugParseAllJointsRawLength": "parseAllJointsResult raw data length:",
+    "debugParseAllJointsSplitLines": "parseAllJointsResult number of lines after split:",
+    "debugParseAllJointsLineContent": "parseAllJointsResult line content:",
+    
+    // Debug Info - Wait for Joint Angles Response
+    "debugWaitJointAnglesStart": "waitForJointAnglesResponse started waiting, timeout:",
+    "debugWaitJointAnglesTimeout": "Waiting for joint angles response timeout",
+    "debugWaitJointAnglesFoundToken": "waitForJointAnglesResponse found end token j, position:",
+    "debugWaitJointAnglesRelatedLines": "waitForJointAnglesResponse related line content:",
+    "debugRecognizedNewFormat": "Recognized as new format (with = marker)",
+    "debugRecognizedOldFormat": "Recognized as old format or other format",
+    "debugNewFormatResponseLength": "New format full response length:",
+    "debugOldFormatResponseLength": "Old format full response length:",
+    "debugClearBufferKeepAfterJ": "Clear buffer, keep data after j marker, remaining length:",
+    "debugClearBufferBackupPlan": "Clear buffer (backup plan), remaining length:",
+    "debugClearEntireBuffer": "Clear entire buffer",
+    "debugJointAnglesResponseComplete": "Joint angles response reception complete:",
+    "debugJointAnglesResponseSuccess": "Success",
+    "debugJointAnglesResponseFailed": "Failed",
+    "debugWaitJointAnglesError": "Error waiting for joint angles response:",
+    
+    // Debug Info - WiFi Dialog
+    "debugWiFiDialogAlreadyShown": "WiFi configuration dialog has already been shown in this session, skipping",
+    
+    // Debug Info - REST Command
+    "debugRestCommandSent": "Rest command sent successfully",
+    
+    // Debug Info - Additional Messages
+    "debugDetectedJCommand": "Detected j command, waiting for joint angles response...",
+    "debugConnectionFailed": "Connection failed, subsequent operations may not work properly",
+    "debugConnectionError": "Connection error:",
+    "debugCannotGetJointAngles": "Cannot get current joint angles, using default value (0). Relative angles may be inaccurate.",
+    "debugUseDefaultJointAngles": "Using default joint angles value (0)",
+    "debugToneListSendFailed": "Tone list send failed:"
   },
 
   ja: {
@@ -1497,7 +1585,51 @@ const TRANSLATIONS = {
     "webSocketConnectionUnavailable": "WebSocket接続が利用できません",
     "programExecutionStoppedByUser": "プログラム実行がユーザーによって停止されました",
     "tokenNotFound": "トークンが見つかりません",
-    "dataNotFound": "データが見つかりません"
+    "dataNotFound": "データが見つかりません",
+    
+    // Debug Info - Joint Angles
+    "debugDetectedRelativeAngles": "相対角度が検出されました、現在の関節角度を取得する必要があります...",
+    "debugCurrentMode": "現在のモード:",
+    "debugSerialMode": "シリアルモード",
+    "debugWiFiMode": "WiFiモード",
+    "debugQueryJCommandRaw": "jコマンドの生の応答を照会:",
+    "debugParsedJointAngles": "解析された関節角度配列:",
+    "debugSuccessGetJointAngles": "関節角度の取得に成功、数:",
+    "debugParseAllJointsStart": "parseAllJointsResult 解析開始、生データ型:",
+    "debugParseAllJointsRawLength": "parseAllJointsResult 生データ長:",
+    "debugParseAllJointsSplitLines": "parseAllJointsResult 分割後の行数:",
+    "debugParseAllJointsLineContent": "parseAllJointsResult 行内容:",
+    
+    // Debug Info - Wait for Joint Angles Response
+    "debugWaitJointAnglesStart": "waitForJointAnglesResponse 待機開始、タイムアウト:",
+    "debugWaitJointAnglesTimeout": "関節角度応答の待機がタイムアウトしました",
+    "debugWaitJointAnglesFoundToken": "waitForJointAnglesResponse 終了トークンjを検出、位置:",
+    "debugWaitJointAnglesRelatedLines": "waitForJointAnglesResponse 関連行内容:",
+    "debugRecognizedNewFormat": "新しい形式として認識（=マーカー付き）",
+    "debugRecognizedOldFormat": "古い形式またはその他の形式として認識",
+    "debugNewFormatResponseLength": "新しい形式の完全な応答長:",
+    "debugOldFormatResponseLength": "古い形式の完全な応答長:",
+    "debugClearBufferKeepAfterJ": "バッファをクリア、jマーカー後のデータを保持、残り長さ:",
+    "debugClearBufferBackupPlan": "バッファをクリア（バックアッププラン）、残り長さ:",
+    "debugClearEntireBuffer": "バッファ全体をクリア",
+    "debugJointAnglesResponseComplete": "関節角度応答の受信完了:",
+    "debugJointAnglesResponseSuccess": "成功",
+    "debugJointAnglesResponseFailed": "失敗",
+    "debugWaitJointAnglesError": "関節角度応答の待機中にエラー:",
+    
+    // Debug Info - WiFi Dialog
+    "debugWiFiDialogAlreadyShown": "WiFi設定ダイアログは既にこのセッションで表示されています、スキップします",
+    
+    // Debug Info - REST Command
+    "debugRestCommandSent": "Restコマンドが正常に送信されました",
+    
+    // Debug Info - Additional Messages
+    "debugDetectedJCommand": "jコマンドを検出、関節角度の応答を待機中...",
+    "debugConnectionFailed": "接続に失敗しました、後続の操作が正常に実行できない可能性があります",
+    "debugConnectionError": "接続エラー:",
+    "debugCannotGetJointAngles": "現在の関節角度を取得できません、デフォルト値(0)を使用します。相対角度が不正確な可能性があります。",
+    "debugUseDefaultJointAngles": "デフォルトの関節角度値(0)を使用",
+    "debugToneListSendFailed": "トーンリストの送信に失敗:"
   }
 };
 

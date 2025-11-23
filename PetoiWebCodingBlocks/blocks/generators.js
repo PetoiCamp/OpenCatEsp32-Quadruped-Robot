@@ -106,7 +106,7 @@ Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
         try {
             const result = await webRequest("${command}", 15000, true);
         } catch (error) {
-            console.error("音调列表发送失败:", error);
+            console.error(getText("debugToneListSendFailed"), error);
             // 如果字节数组发送失败，尝试逐个发送音符
             ${generateFallbackNotes(tones)}
         }
@@ -608,10 +608,10 @@ try {
     deviceIP = "${ip}";
     console.log(getText("connectedToDevice") + deviceIP);
   } else {
-    console.log("连接失败，后续操作可能无法正常执行");
+    console.log(getText("debugConnectionFailed"));
   }
 } catch (error) {
-  console.error("连接错误:", error.message);
+  console.error(getText("debugConnectionError"), error.message);
 }\n`;
 };
 
@@ -1117,26 +1117,85 @@ async function waitForNewGestureValue(prevKey, timeoutMs = 500) {
     return -1;
 }
 
-// rawResult is string like "0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t10\t11\t12\t13\t14\t15\t\n0,\t0,\t0,\t0,\t0,\t0,\t0,\t0,\t30,\t30,\t30,\t30,\t30,\t30,\t30,\t30,\t\nj\n"
+// rawResult可能是两种格式之一:
+// 旧格式: "0\t1\t2\t...\n0,\t0,\t0,\t...\nj\n"
+// 新格式: "=\n0 1 2 3 ...\n-1, -1, 0, 0, ...\nj\n"
 function parseAllJointsResult(rawResult) {
+    if (typeof showDebug !== 'undefined' && showDebug) {
+        console.log(getText('debugParseAllJointsStart'), typeof rawResult);
+        console.log(getText('debugParseAllJointsRawLength'), rawResult ? rawResult.length : 0);
+    }
+    
     // 检查rawResult是否为null或undefined
     if (!rawResult) {
         console.warn('parseAllJointsResult: rawResult is null or undefined');
         return [];
     }
     
-    const lines = rawResult.split("\n");
-    if (lines.length >= 3 && lines[2] && lines[2].includes("j")) {
-        const indexs = lines[0]
+    const lines = rawResult.split("\n").map(line => line.trim());
+    if (typeof showDebug !== 'undefined' && showDebug) {
+        console.log(getText('debugParseAllJointsSplitLines'), lines.length);
+        console.log(getText('debugParseAllJointsLineContent'), JSON.stringify(lines));
+    }
+    
+    // 查找结束标记 'j' 的位置
+    let jIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i] === 'j') {
+            jIndex = i;
+            break;
+        }
+    }
+    
+    if (jIndex < 0) {
+        console.warn('parseAllJointsResult: 未找到结束标记 "j"');
+        return [];
+    }
+    
+    // 新格式: = \n 索引行 \n 角度行 \n j
+    if (jIndex >= 3 && lines[jIndex - 3] === '=') {
+        const indexLine = lines[jIndex - 2];
+        const angleLine = lines[jIndex - 1];
+        
+        // 索引行用空格分隔
+        const indexs = indexLine
+            .split(/\s+/)
+            .filter((item) => item.length > 0)
+            .map((num) => parseInt(num));
+        
+        // 角度行用 ", " 分隔
+        const angles = angleLine
+            .split(/,\s*/)
+            .filter((item) => item.length > 0)
+            .map((num) => parseInt(num));
+        
+        if (angles.length > 0) {
+            return angles;
+        }
+    }
+    
+    // 旧格式: 索引行 \n 角度行 \n j (兼容性支持)
+    if (jIndex >= 2) {
+        const indexLine = lines[jIndex - 2];
+        const angleLine = lines[jIndex - 1];
+        
+        // 尝试用 \t 分隔
+        const indexs = indexLine
             .split("\t")
             .filter((item) => item.length > 0)
             .map((num) => parseInt(num));
-        const angles = lines[1]
+        
+        const angles = angleLine
             .split(",\t")
             .filter((item) => item.length > 0)
             .map((num) => parseInt(num));
-        return angles;
+        
+        if (angles.length > 0) {
+            return angles;
+        }
     }
+    
+    console.warn('parseAllJointsResult: 无法解析关节角度数据');
     return [];
 }
 
@@ -1199,9 +1258,39 @@ async function encodeMoveCommand(token, params) {
         }
         const hasRelative = jointArgs.some((item) => item.length == 3);
         if (hasRelative) {
-            const rawResult = await webRequest("j", JOINT_QUERY_TIMEOUT, true); // 10 seconds for joint query
-            const result = parseAllJointsResult(rawResult);
-            joints = result;
+            if (typeof showDebug !== 'undefined' && showDebug) {
+                console.log(getText('debugDetectedRelativeAngles'));
+            }
+            try {
+                // 在串口模式下，webRequest已经被重定向到serialRequest
+                // 所以可以直接使用webRequest，它会自动调用正确的函数
+                const isSerialMode = (typeof window !== 'undefined' && window.__isSerialMode === true);
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    console.log(getText('debugCurrentMode'), isSerialMode ? getText('debugSerialMode') : getText('debugWiFiMode'));
+                }
+                let rawResult;
+                rawResult = await webRequest("j", JOINT_QUERY_TIMEOUT, true);
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    console.log(getText('debugQueryJCommandRaw'), rawResult);
+                }
+                const result = parseAllJointsResult(rawResult);
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    console.log(getText('debugParsedJointAngles'), result);
+                }
+                // 检查查询结果是否有效
+                if (result && result.length > 0) {
+                    joints = result;
+                    if (typeof showDebug !== 'undefined' && showDebug) {
+                        console.log(getText('debugSuccessGetJointAngles'), result.length);
+                    }
+                } else {
+                    console.warn(getText('debugCannotGetJointAngles'));
+                    // joints 保持为 Array(16).fill(0)
+                }
+            } catch (error) {
+                console.error(getText('debugWaitJointAnglesError'), error);
+                console.warn(getText('debugUseDefaultJointAngles'));
+            }
         }
         let command = "";
         // m: move seq
