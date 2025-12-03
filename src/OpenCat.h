@@ -128,6 +128,15 @@ String uniqueName = "";
 #define TAIL  // the robot arm's clip is assigned to the tail joint
 #define LL_LEG
 
+#elif defined CPT
+#define MODEL "CPT"
+#define HEAD
+#define TAIL
+#define X_LEG
+#define REGULAR P1L  // G41
+#define KNEE P1L     // G41
+#include "InstinctCptESP.h"
+
 #elif defined CUB
 #define MODEL "DoF16"
 #ifdef BiBoard2
@@ -166,6 +175,8 @@ const uint8_t PWM_pin[PWM_NUM] = {
     19, 2,  4,  27,  // head or shoulder roll
 #elif defined NYBBLE
     19, 4,  2,  27,  // head or shoulder roll
+#elif defined CPT
+    19, 4,  2,  27,  // head or shoulder roll
 #endif
     33, 5,  15, 14,  // shoulder pitch
     32, 18, 13, 12  // knee
@@ -202,13 +213,15 @@ const uint8_t PWM_pin[PWM_NUM] = {
 #define IMU_MPU6050
 #define IMU_ICM42670
 
-#define PWM_LED_PIN 27
+// #define PWM_LED_PIN 27
 
 // L:Left-R:Right-F:Front-B:Back---LF, RF, RB, LB
 const uint8_t PWM_pin[PWM_NUM] = {
 #ifdef BITTLE
     18, 14, 5,  27,  // head or shoulder roll
 #elif defined NYBBLE
+    18, 5,  14, 27,  // head or shoulder roll
+#elif defined CPT
     18, 5,  14, 27,  // head or shoulder roll
 #endif
     23, 4,  12, 33,  // shoulder pitch
@@ -247,7 +260,7 @@ const uint8_t PWM_pin[PWM_NUM] = {
 double rate = 1.0 * MAX_READING / BASE_RANGE;
 
 #define DOF 16
-#if defined NYBBLE || defined BITTLE
+#if defined NYBBLE || defined BITTLE || defined CPT
 #define WALKING_DOF 8
 #define GAIT_ARRAY_DOF 8
 #else  // CUB
@@ -504,7 +517,7 @@ int8_t moduleList[] = {
 
 String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_IR_Distance ", "PIR",
                         "BackTouch",    "Ultrasonic", "Gesture",      "Camera",        "Quick_Demo"};
-#ifdef NYBBLE
+#if defined NYBBLE || defined CPT
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
 #else
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};
@@ -534,6 +547,8 @@ int delayPrevious;
 int runDelay = delayMid;
 
 #ifdef NYBBLE
+int8_t middleShift[] = {0, 15, 0, 0, -45, -45, -45, -45, 10, 10, -10, -10, -30, -30, 30, 30};
+#elif defined CPT
 int8_t middleShift[] = {0, 15, 0, 0, -45, -45, -45, -45, 10, 10, -10, -10, -30, -30, 30, 30};
 #elif defined BITTLE
 #ifndef MINI
@@ -575,10 +590,15 @@ int angleLimit[][2] = {
 
     {-200, 80},  {-200, 80},  {-80, 200}, {-80, 200}, {-80, 200}, {-80, 200}, {-80, 200}, {-80, 200},
 };
-#else  // Nybble
+#elif defined NYBBLE // Nybble
 int angleLimit[][2] = {
     {-120, 120}, {-75, 35},  {-120, 120}, {-120, 120}, {-90, 60}, {-90, 60}, {-90, 90}, {-90, 90},
     {-200, 80},  {-200, 80}, {-80, 200},  {-80, 200},  {-80, 80}, {-80, 80}, {-80, 80}, {-80, 80},
+};
+#elif defined CPT
+int angleLimit[][2] = {
+    {-120, 120}, {-75, 75},  {-120, 120}, {-120, 120}, {-90, 60}, {-90, 60}, {-90, 90}, {-90, 90},
+    {-200, 85},  {-200, 85}, {-90, 200},  {-90, 200},  {-100, 90}, {-100, 90}, {-90, 100}, {-90, 100},
 };
 #endif
 #endif
