@@ -517,10 +517,12 @@ int8_t moduleList[] = {
 
 String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Light ", "Double_IR_Distance ", "PIR",
                         "BackTouch",    "Ultrasonic", "Gesture",      "Camera",        "Quick_Demo"};
-#if defined NYBBLE || defined CPT
+#if defined NYBBLE 
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
+#elif defined CPT
+bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};  
 #else
-bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
 #endif
 bool moduleDemoQ = false;
 int8_t moduleIndex;

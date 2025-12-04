@@ -56,9 +56,9 @@ String customizedCmdList[] = {
   "9th",
   "10th"  // define up to 10 customized commands.
 #endif
-#elif defined NYBBLE
+#else//if defined NYBBLE
   "kluckyL",   // lucky cat 招财猫
-  "klkPawsL",  // lick paws 舔爪子
+  "kwsfL",  // lick paws 舔爪子
   "qksit:100>i0 20 1 0 8 -70 12 0 15 10:0>o1 0, 0 40 -20 4 0, 1 -30 20 4 30, 8 -70 10 4 60, 12 -10 10 4 0, 15 10 0 4 0:100>m0 0 1 -20 2 0:0>ksit:0",
   // "kwsfL",                                                                 //wash face 洗脸
   "khuntL",                                                                // hunt 捕猎

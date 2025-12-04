@@ -499,6 +499,8 @@ void genBleID(int suffixDigits = 2) {
       "Bittle"
 #elif defined NYBBLE
       "Nybble"
+#elif defined CPT
+      "Cpt"
 #else
       "Cub"
 #endif
