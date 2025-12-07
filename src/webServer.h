@@ -411,12 +411,12 @@ void startWebTask(String taskId)
         // 解析命令
         token = webCmd[0];
         strcpy(newCmd, webCmd.c_str() + 1);
-        cmdLen = strlen(newCmd);
-        newCmd[cmdLen + 1] = '\0';
-        
-                  WEB_DEBUG("Parsed token: ", token);
-          WEB_DEBUG("Parsed command: ", newCmd);
-          WEB_DEBUG("Command length: ", cmdLen);
+        leftTrimSpaces(newCmd, &cmdLen);  // trim the space after token
+        cmdLen = strlen(newCmd);          // recalculate the command length
+        newCmd[cmdLen] = '\0';            // set the end of the command
+        WEB_DEBUG("Parsed token: ", token);
+        WEB_DEBUG("Parsed command: ", newCmd);
+        WEB_DEBUG("Command length: ", cmdLen);
       }
       newCmdIdx = 4;
 
