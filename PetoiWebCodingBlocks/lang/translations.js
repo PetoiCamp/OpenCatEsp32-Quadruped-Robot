@@ -178,15 +178,15 @@ const TRANSLATIONS = {
     "jointRelativeAngleValue": "关节 %1 角度 %2 %3 度",
     "getJointAngle": "获取关节 %1 的角度",
     "getAllJointAngles": "获取所有关节角度",
-    "gait": "步态 %1",
-    "posture": "姿势 %1",
-    "acrobatic_moves": "杂技动作(小心使用) %1",
+    "gait": "执行步态 %1",
+    "posture": "执行姿势 %1",
+    "acrobatic_moves": "执行特技动作(⚠️高压力) %1",
     "localAction": "原地动作 %1",
     "highDifficultyAction": "高难度特技动作(小心使用) %1",
     "setMotorAngleWithDelay": "设置关节 %1 角度为 %2 后延时 %3 秒",
-    "gaitWithDelay": "步态 %1 后延时 %2 秒",
-    "postureWithDelay": "姿势 %1 后延时 %2 秒",
-    "acrobaticWithDelay": "杂技动作(小心使用) %1 后延时 %2 秒",
+    "gaitWithDelay": "执行步态 %1 后延时 %2 秒",
+    "postureWithDelay": "执行姿势 %1 后延时 %2 秒",
+    "acrobaticWithDelay": "执行特技动作(⚠️高压力) %1 后延时 %2 秒",
 
     // 积木文本 - 控制
     "delayMs": "延时 %1 秒",
@@ -309,9 +309,9 @@ const TRANSLATIONS = {
     "beatUnit": "拍",
 
     // Motion blocks UI text
-    "gaitLabel": "步态",
-    "postureLabel": "姿势",
-    "acrobaticMovesLabel": "杂技动作(小心使用)",
+    "gaitLabel": "执行步态",
+    "postureLabel": "执行姿势",
+    "acrobaticMovesLabel": "执行特技动作(⚠️高压力)",
 
     // Note names
     "noteRest": "休止符",
@@ -723,15 +723,15 @@ const TRANSLATIONS = {
     "jointRelativeAngleValue": "Joint %1 angle %2 %3 degrees",
     "getJointAngle": "Get Joint %1 Angle",
     "getAllJointAngles": "Get All Joint Angles",
-    "gait": "Gait %1",
-    "posture": "Posture %1",
-    "acrobatic_moves": "Acrobatic Moves (Use with Caution) %1",
+    "gait": "Execute Walking %1",
+    "posture": "Execute Posture %1",
+    "acrobatic_moves": "Execute special moves (⚠️high stress) %1",
     "localAction": "Static Action %1",
     "highDifficultyAction": "High Difficulty Action (Use with Caution) %1",
     "setMotorAngleWithDelay": "Set Joint %1 Angle to %2 then delay %3 sec",
-    "gaitWithDelay": "Gait %1 then delay %2 sec",
-    "postureWithDelay": "Posture %1 then delay %2 sec",
-    "acrobaticWithDelay": "Acrobatic Moves (Use with Caution) %1 then delay %2 sec",
+    "gaitWithDelay": "Execute Walking %1 then delay %2 sec",
+    "postureWithDelay": "Execute Posture %1 then delay %2 sec",
+    "acrobaticWithDelay": "Execute special moves (⚠️high stress) %1 then delay %2 sec",
 
     // Block text - Control
     "delayMs": "Delay %1 seconds",
@@ -854,9 +854,9 @@ const TRANSLATIONS = {
     "beatUnit": "beat",
 
     // Motion blocks UI text
-    "gaitLabel": "Gait",
-    "postureLabel": "Posture",
-    "acrobaticMovesLabel": "Acrobatic Moves (Use with Caution)",
+    "gaitLabel": "Execute Walking",
+    "postureLabel": "Execute Posture",
+    "acrobaticMovesLabel": "Execute special moves (⚠️high stress)",
 
     // Note names
     "noteRest": "Rest",
@@ -1274,15 +1274,15 @@ const TRANSLATIONS = {
     "jointRelativeAngleValue": "関節 %1 の角度 %2 %3度",
     "getJointAngle": "関節 %1 の角度を取得",
     "getAllJointAngles": "すべての関節角度を取得",
-    "gait": "歩行パターン %1",
-    "posture": "姿勢 %1",
-    "acrobatic_moves": "アクロバティック動作（注意して使用） %1",
+    "gait": "歩行を実行 %1",
+    "posture": "姿勢を実行 %1",
+    "acrobatic_moves": "特別な動きを実行（⚠️高負荷） %1",
     "localAction": "静的アクション %1",
     "highDifficultyAction": "高難度アクション（注意して使用） %1",
     "setMotorAngleWithDelay": "関節 %1 の角度を %2 に設定し %3 秒待機",
-    "gaitWithDelay": "歩行パターン %1 の後 %2 秒待機",
-    "postureWithDelay": "姿勢 %1 の後 %2 秒待機",
-    "acrobaticWithDelay": "アクロバティック動作（注意して使用）%1 の後 %2 秒待機",
+    "gaitWithDelay": "歩行を実行 %1 の後 %2 秒待機",
+    "postureWithDelay": "姿勢を実行 %1 の後 %2 秒待機",
+    "acrobaticWithDelay": "特別な動きを実行（⚠️高負荷） %1 の後 %2 秒待機",
 
     // ブロックテキスト - 制御
     "delayMs": "%1 秒待機",
@@ -1399,9 +1399,9 @@ const TRANSLATIONS = {
     "beatUnit": "拍",
 
     // モーションブロックUIテキスト
-    "gaitLabel": "歩行パターン",
-    "postureLabel": "姿勢",
-    "acrobaticMovesLabel": "アクロバティック動作（注意して使用）",
+    "gaitLabel": "歩行を実行",
+    "postureLabel": "姿勢を実行",
+    "acrobaticMovesLabel": "特別な動きを実行（⚠️高負荷）",
 
     // 音符名
     "noteRest": "休符",
