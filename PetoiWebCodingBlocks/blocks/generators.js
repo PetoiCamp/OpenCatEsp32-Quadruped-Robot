@@ -668,6 +668,43 @@ Blockly.JavaScript.forBlock["get_analog_input"] = function (block) {
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
 };
 
+// 代码生成:通用输入积木（digital/analog下拉菜单 + 引脚数字输入框）
+Blockly.JavaScript.forBlock["get_input"] = function (block) {
+    const type = block.getFieldValue("TYPE");
+    const pin = block.getFieldValue("PIN");
+    const commandType = type === "digital" ? "Rd" : "Ra";
+    const command = encodeCommand(commandType, [pin]);
+    let code = `await (async function() {
+    checkStopExecution();
+    const rawResult = await webRequest("${command}", 5000, true);
+    let result = parseSingleResult(rawResult);
+    // 对于数字输入，非零数字自动转化为1（或true）
+    if ("${type}" === "digital") {
+      result = result !== 0 ? 1 : 0;
+    }
+    // 只在showDebug模式下打印结果
+    if (typeof showDebug !== 'undefined' && showDebug) {
+      console.log(result);
+    }
+    return result;
+  })()`;
+    return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
+};
+
+// 代码生成:通用输出积木（digital/analog下拉菜单 + 引脚数字输入框 + Value数字输入框）
+Blockly.JavaScript.forBlock["set_output"] = function (block) {
+    const type = block.getFieldValue("TYPE");
+    const pin = block.getFieldValue("PIN");
+    const valueCode = Blockly.JavaScript.valueToCode(block, "VALUE", Blockly.JavaScript.ORDER_ATOMIC) || "0";
+    const commandType = type === "digital" ? "Wd" : "Wa";
+    // 对于数字输出，非零数字自动转化为1（在运行时处理）
+    if (type === "digital") {
+        return wrapAsyncOperation(`const value = ${valueCode}; const digitalValue = value !== 0 ? 1 : 0; const command = encodeCommand("${commandType}", ["${pin}", digitalValue]); const result = await webRequest(command, 5000, true);`) + '\n';
+    } else {
+        return wrapAsyncOperation(`const analogValue = ${valueCode}; const command = encodeCommand("${commandType}", ["${pin}", analogValue]); const result = await webRequest(command, 5000, true);`) + '\n';
+    }
+};
+
 // 代码生成:控制台输入代码生成器
 Blockly.JavaScript.forBlock["console_input"] = function (block) {
     const prompt = block.getFieldValue("PROMPT");

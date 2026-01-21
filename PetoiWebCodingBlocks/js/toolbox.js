@@ -187,6 +187,19 @@ function createToolbox() {
                         } 
                     },
                     { kind: "block", type: "gyro_control" },
+                    { kind: "block", type: "get_input" },
+                    { kind: "block", type: "set_output",
+                        inputs: {
+                            VALUE: {
+                                shadow: {
+                                    type: "math_number",
+                                    fields: {
+                                        NUM: 0,
+                                    },
+                                },
+                            },
+                        } 
+                    },
                 ],
             },
             {
@@ -595,6 +608,70 @@ function blocklyGlobalConfig() {
                 colour: COMMUNICATION_COLOR, // 通信积木：红色
                 tooltip: "",
             })
+        }
+    }
+
+    // 通用输入积木（digital/analog下拉菜单 + 引脚数字输入框）
+    Blockly.Blocks["get_input"] = {
+        init: function () {
+            this.jsonInit({
+                type: "get_input",
+                message0: getText("getInput"),
+                args0: [
+                    {
+                        type: "field_dropdown",
+                        name: "TYPE",
+                        options: [
+                            [getText("inputTypeDigital"), "digital"],
+                            [getText("inputTypeAnalog"), "analog"],
+                        ],
+                    },
+                    {
+                        type: "field_number",
+                        name: "PIN",
+                        value: 34,
+                        min: 0,
+                    },
+                ],
+                output: "Number",
+                colour: COMMUNICATION_COLOR, // 通信积木：红色
+                tooltip: "",
+            });
+        }
+    }
+
+    // 通用输出积木（digital/analog下拉菜单 + 引脚数字输入框 + Value数字输入框）
+    Blockly.Blocks["set_output"] = {
+        init: function () {
+            this.jsonInit({
+                type: "set_output",
+                message0: getText("setOutput"),
+                args0: [
+                    {
+                        type: "field_dropdown",
+                        name: "TYPE",
+                        options: [
+                            [getText("inputTypeDigital"), "digital"],
+                            [getText("inputTypeAnalog"), "analog"],
+                        ],
+                    },
+                    {
+                        type: "field_number",
+                        name: "PIN",
+                        value: 34,
+                        min: 0,
+                    },
+                    {
+                        type: "input_value",
+                        name: "VALUE",
+                        check: "Number",
+                    },
+                ],
+                previousStatement: null,
+                nextStatement: null,
+                colour: COMMUNICATION_COLOR, // 通信积木：红色
+                tooltip: "",
+            });
         }
     }
 
