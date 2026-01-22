@@ -928,9 +928,9 @@ void taskIMU(void *parameter) {
     // Serial.println("Stack high water mark: " + String(uxTaskGetStackHighWaterMark(NULL)) + " bytes");
   }
   
-  PTHL("before delete, updateGyroQ =", updateGyroQ);
-  PTHL("*running =", *running);
-  PTLF("IMU task exiting, calling vTaskDelete...");
+  // PTHL("before delete, updateGyroQ =", updateGyroQ);
+  // PTHL("*running =", *running);
+  PTLF("Exiting IMU task, calling vTaskDelete...");
   
   // ensure task can exit correctly
   vTaskDelay(10 / portTICK_PERIOD_MS);   // Reduce delay to ensure fast exit
@@ -941,6 +941,28 @@ void taskIMU(void *parameter) {
 
 void taskCalibrateImuUsingCore0(void *parameter);  // Forward declaration -ee-
 
+void createIMUTask() {
+  PTL("Creating IMU task...");
+  
+  xTaskCreatePinnedToCore(taskIMU,        // task function
+                          "TaskIMU",      // task name
+                          1500,           // task stack size​​
+                          &updateGyroQ,   // parameters
+                          1,              // priority
+                          &TASK_imu,      // handle
+                          0);             // core
+  delay(100);
+  
+  // get task handle, for subsequent operations
+  if (TASK_imu == NULL) {
+    TASK_imu = xTaskGetHandle("TaskIMU");
+    if (TASK_imu == NULL) {
+      PTLF("Warning: Failed to get IMU task handle!");
+    } else {
+      PTLF("IMU task created successfully");
+    }
+  }
+}
 void imuSetup() {
   if (newBoard) {
 #ifndef AUTO_INIT
@@ -975,28 +997,7 @@ void imuSetup() {
   // ensure updateGyroQ is true
   updateGyroQ = true;
   
-  // Create IMU task
-  xTaskCreatePinnedToCore(taskIMU,        // task function
-                          "TaskIMU",      // task name
-                          1500,           // task stack size​​
-                          &updateGyroQ,   // parameters
-                          1,              // priority
-                          &TASK_imu,      // handle
-                          0);             // core
-  
-  // wait for task creation to complete
-  delay(100);
-  
-  // get task handle, for subsequent operations
-  if (TASK_imu == NULL) {
-    TASK_imu = xTaskGetHandle("TaskIMU");
-    if (TASK_imu == NULL) {
-      PTLF("Warning: Failed to get IMU task handle!");
-    } else {
-      PTLF("IMU task created successfully");
-    }
-  }
-
+  createIMUTask();
   // imuException = xyzReal[3] < 0;
 }
 

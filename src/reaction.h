@@ -504,6 +504,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         {
           gyroBalanceQ = !gyroBalanceQ;
           token = gyroBalanceQ ? 'G' : 'g'; // G for activated gyro
+          resetAdjust();
         }
         else
         {
@@ -583,28 +584,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             PTLF("Calibration completed, allowing IMU to stabilize...");
             delay(3000); // Allow IMU to stabilize after calibration
             beep(18, 50, 50, 6);
-
-             // create IMU task
-             xTaskCreatePinnedToCore(taskIMU,        // Task function
-              "TaskIMU",                             // Task name
-              1500,                                  // Task stack size
-              &updateGyroQ,                          // Task parameters
-              1,                                     // Task priority
-              &TASK_imu,                             // Task handle
-              0);                                    // Task core number to run on
-
-            // Wait for task creation to complete
-            delay(100);
-            
-            // Get task handle, for subsequent operations
-            if (TASK_imu == NULL) {
-              TASK_imu = xTaskGetHandle("TaskIMU");
-              if (TASK_imu == NULL) {
-                PTLF("Warning: Failed to get IMU task handle!");
-              } else {
-                PTLF("IMU task created successfully");
-              }
-            }
+            createIMUTask();
           }
           else
           {
@@ -616,10 +596,32 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 fineAdjustQ = (newCmd[i] == C_GYRO_FINENESS); // if newCmd[i] == T_GYRO_FINENESS, fineAdjustQ is true. else newCmd[i] == C_GYRO_FINENESS_OFF, fineAdjustQ is false.
                 token = fineAdjustQ ? 'G' : 'g';              // G for activated gyro
               }
-              else if (toupper(newCmd[i]) == C_GYRO_BALANCE)  // if newCmd[i] is 'b' or 'B'
+              else if (toupper(newCmd[i]) == C_GYRO_BALANCE){  // if newCmd[i] is 'b' or 'B'
                 gyroBalanceQ = (newCmd[i] == C_GYRO_BALANCE); // if newCmd[i] == T_GYRO_FINENESS, gyroBalanceQ is true. else is false.
-              else if (toupper(newCmd[i]) == C_GYRO_UPDATE)  // if newCmd[i] is 'u' or 'U' - Update gyro reading
-                updateGyroQ = (newCmd[i] == C_GYRO_UPDATE); // if newCmd[i] == 'U', updateGyroQ is true. else 'u', updateGyroQ is false.
+                if (!gyroBalanceQ) {
+                  gyroBalanceQ = false;
+                  printToAllPorts('g');
+                  resetAdjust();
+                }
+                else if (!updateGyroQ) {
+                  updateGyroQ = true;
+                  createIMUTask();
+                }
+              }
+              else if (toupper(newCmd[i]) == C_GYRO_UPDATE) { // if newCmd[i] is 'u' or 'U' - Update gyro reading
+                bool newState = (newCmd[i] == C_GYRO_UPDATE); // if newCmd[i] == 'U', updateGyroQ is true. else 'u', updateGyroQ is false.
+                if (!newState) {
+                  updateGyroQ = false;
+                  gyroBalanceQ = false;
+                  printToAllPorts('g');
+                  resetAdjust();
+                }
+                else if (newState && !updateGyroQ) {
+                  updateGyroQ = true;
+                  gyroBalanceQ = true;
+                  createIMUTask();
+                }
+              }
               else if (toupper(newCmd[i]) == C_PRINT)
               {                                      // if newCmd[i] is 'p' or 'P'
                 printGyroQ = (newCmd[i] == C_PRINT); // if newCmd[i] == T_GYRO_PRINT, always print gyro. else only print once

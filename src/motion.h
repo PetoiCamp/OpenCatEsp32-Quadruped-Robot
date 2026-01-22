@@ -294,6 +294,11 @@ float adaptiveParameterArray[][NUM_ADAPT_PARAM] = {
 };
 #endif
 
+void resetAdjust() {
+  for (int i = 0; i < DOF; i++)
+    currentAdjust[i] = 0;
+}
+
 float adjust(byte i, bool postureQ = false) {
   float rollAdj, pitchAdj;
   float cutOff = postureQ ? 45 : 15;  // reduce angle deviation for non-posture skills to filter noise
