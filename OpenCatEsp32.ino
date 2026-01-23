@@ -29,6 +29,10 @@
 // #define ROBOT_ARM                 // for attaching head clip arm
 #include "src/OpenCat.h"
 
+// Set Arduino loop task stack size to 16KB (default is 8KB) for debugging
+// This must be called before setup() to take effect
+// SET_LOOP_TASK_STACK_SIZE(16*1024);  // 16KB stack size
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);  // USB serial
@@ -36,10 +40,36 @@ void setup() {
   // Serial1.begin(115200); //second serial port
   while (Serial.available() && Serial.read())
     ;  // empty buffer
+  
+  // Check main loop task stack size for debugging
+  // UBaseType_t stackRemaining = uxTaskGetStackHighWaterMark(NULL);
+  // PTHL("Main loop task initial stack remaining: ", stackRemaining);
+  // PTHL("Arduino loop task stack size: ", getArduinoLoopTaskStackSize());
+  // if (stackRemaining < 2048) {
+  //   PTLF("WARNING: Main loop stack may be too small! Consider increasing CONFIG_ARDUINO_LOOP_STACK_SIZE");
+  // }
+  
   initRobot();
 }
 
+// Debugging code for stack usage
+// static unsigned long lastStackCheckTime = 0;
+// const unsigned long STACK_CHECK_INTERVAL = 5000;  // Check stack every 5 seconds (reduced from 30s for faster detection)
+
 void loop() {
+  // Monitor main loop stack usage periodically for debugging
+  // unsigned long currentTime = millis();
+  // if (currentTime - lastStackCheckTime > STACK_CHECK_INTERVAL) {
+  //   UBaseType_t stackRemaining = uxTaskGetStackHighWaterMark(NULL);
+  //   if (stackRemaining < 2048) {  // Warn if less than 2KB remaining (increased threshold)
+  //     PTHL("WARNING: Main loop stack low! Remaining bytes: ", stackRemaining);
+  //     if (stackRemaining < 1024) {
+  //       PTLF("CRITICAL: Stack very low! System may crash soon!");
+  //     }
+  //   }
+  //   lastStackCheckTime = currentTime;
+  // }
+  
 #ifdef VOLTAGE
   lowBattery();
 #endif

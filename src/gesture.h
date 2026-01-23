@@ -47,7 +47,9 @@ int8_t melody12345[] = { 12, 64, 14, 64, 16, 64, 17, 64, 19, 32, '~' };
 int8_t melody67345[] = { 21, 16, 23, 32, 16, 64, 17, 64, 19, 64, '~' };
 int8_t melody32654[] = { 16, 64, 14, 16, 21, 64, 19, 32, 17, 16, '~' };
 
-// unsigned long lastValidGestureTime = 0;
+unsigned long lastValidGestureTime = 0;
+const unsigned long GESTURE_MIN_INTERVAL = 1500;  // Minimum 1.5 seconds between gestures
+
 int read_gesture() {
   // if(millis() - lastValidGestureTime > 5000){
 #ifndef USE_WIRE1
@@ -66,8 +68,24 @@ int read_gesture() {
   {
     // a gesture was detected, read and print to Serial Monitor
     gesture = APDS.readGesture();
+    // Check task queue size to prevent overflow (max 6 tasks)
     if (gestureReactionQ) 
     {
+      // Check minimum time interval between gestures
+      unsigned long currentTime = millis();
+      if (currentTime - lastValidGestureTime < GESTURE_MIN_INTERVAL) {
+        PTLF("Gesture too soon, skipping");
+        gestureLockI2c = false;
+        return gesture;
+      }
+      
+      if (tQueue->size() >= 6) {
+        PTLF("Task queue full, skipping gesture");
+        gestureLockI2c = false;
+        return gesture;
+      }
+      
+      lastValidGestureTime = currentTime;
       PTF("Detected ");
       switch (gesture) 
       {

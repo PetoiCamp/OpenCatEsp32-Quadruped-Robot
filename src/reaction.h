@@ -561,7 +561,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             xTaskCreatePinnedToCore(
                 taskCalibrateImuUsingCore0,         // Task function
                 "taskCalibrateImuUsingCore0",       // Task name
-                1800,                               // Task stack size
+                1800,                               // Task stack size (restored to original value)
                 NULL,                               // Task parameters
                 1,                                  // Task priority
                 &taskCalibrateImuUsingCore0_handle, // Task handle
@@ -784,9 +784,13 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
           while ((char)newCmd[flush126] == '~')
             flush126++;
           if ((int8_t)newCmd[flush126] == -126) {  // case: button
-            strcpy(buttonCmd, newCmd + flush126 + 1);
+            // Use strncpy with bounds checking to prevent buffer overflow
+            // buttonCmd is 20 bytes, so max length is 19 (including null terminator)
+            const int BUTTON_CMD_MAX_LEN = 19;
+            strncpy(buttonCmd, newCmd + flush126 + 1, BUTTON_CMD_MAX_LEN);
+            buttonCmd[BUTTON_CMD_MAX_LEN] = '\0';  // Ensure null termination
             int j = 0;
-            while (buttonCmd[j] != '\0') {
+            while (buttonCmd[j] != '\0' && j < BUTTON_CMD_MAX_LEN) {
               if (buttonCmd[j] == '\n' || buttonCmd[j] == '~') {
                 buttonCmd[j] = '\0';
                 break;
@@ -822,9 +826,16 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             char suffix[2] = { joystickDirCmd[dirMap[dirY + 2][dirX + 1]] };
             PTHL("suffix", suffix[0]);
             if (buttonCmd[0] != '\0') {
-              strcat(buttonCmd, suffix);
-              PTHL("joystick cmd", buttonCmd + 1);
-              tQueue->addTask(buttonCmd[0], buttonCmd + 1);
+              // Check buffer bounds before strcat to prevent overflow
+              const int BUTTON_CMD_MAX_LEN = 19;
+              int currentLen = strlen(buttonCmd);
+              if (currentLen < BUTTON_CMD_MAX_LEN - 1) {  // Leave room for suffix + null terminator
+                strcat(buttonCmd, suffix);
+                PTHL("joystick cmd", buttonCmd + 1);
+                tQueue->addTask(buttonCmd[0], buttonCmd + 1);
+              } else {
+                PTLF("WARNING: buttonCmd buffer full, skipping suffix append");
+              }
               buttonCmd[0] = '\0';
               delay(500);
             }
@@ -860,7 +871,9 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             targetFrame[DOF] = '~';
             
             char *cmdForParsing = new char[cmdLen + 1];
-            strcpy(cmdForParsing, newCmd);
+            // Use strncpy with bounds checking to prevent buffer overflow
+            strncpy(cmdForParsing, newCmd, cmdLen);
+            cmdForParsing[cmdLen] = '\0';  // Ensure null termination
             if (token == T_SERVO_CALIBRATE && lastToken != T_SERVO_CALIBRATE) {
               #ifdef T_SERVO_MICROSECOND
                                 setServoP(P_HARD);
@@ -1440,7 +1453,9 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             timeOrAngle = atoi(spacePos + 1);
           } else {
             // No arguments, use the full command as skill name
-            strcpy(skillName, newCmd);
+            // Use strncpy with bounds checking to prevent buffer overflow
+            strncpy(skillName, newCmd, CMD_LEN);
+            skillName[CMD_LEN] = '\0';  // Ensure null termination
           }
           
           if (!strcmp("x", skillName)        // x for random skill
@@ -1470,11 +1485,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 } else {
                   // Time-based control: use task queue with timing
                   cycleCountingMode = false;
-                  char taskCmd[CMD_LEN + 1];
-                  sprintf(taskCmd, "%s", skillName);
-                  tQueue->addTask('k', taskCmd, timeOrAngle);
+                  // Use skillName directly instead of copying to avoid stack allocation
+                  // skillName is already a local variable, safe to use
+                  tQueue->addTask('k', skillName, timeOrAngle);
                   tQueue->addTask('k', "up");
-                  PTH("Time-based mode: ", taskCmd);
+                  PTH("Time-based mode: ", skillName);
                   PTHL(" for ", timeOrAngle);
                   PTL(" ms");
                 }
@@ -1523,7 +1538,9 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
 
     if (token == T_SKILL && newCmd[0] != '\0') {
       // if (skill->period > 0)
-      strcpy(lastCmd, newCmd);
+      // Use strncpy with bounds checking to prevent buffer overflow
+      strncpy(lastCmd, newCmd, CMD_LEN);
+      lastCmd[CMD_LEN] = '\0';  // Ensure null termination
       // else
       //   strcpy(lastCmd, "up");
     }

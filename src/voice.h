@@ -180,6 +180,13 @@ void read_voice() {
     }
 #endif
     PTL(raw);
+    
+    // Check minimum length before accessing raw[2]
+    if (raw.length() < 3) {
+      PTLF("Voice command too short, ignoring");
+      return;
+    }
+    
     byte index = (byte)raw[2];  // interpret the 3rd byte as integer
     int shift = -1;
     if (index > 10 && index < 61) {
@@ -189,10 +196,15 @@ void read_voice() {
         PT(' ');
         if (index < listLength) {
           raw = customizedCmdList[index];
+          if (raw.length() < 1) {
+            PTLF("Customized command empty, ignoring");
+            return;
+          }
           token = raw[0];
           shift = 1;
         } else {
           PTLF("Undefined!");
+          return;
         }
       } else if (index < 61) {  // 21 ~ 60 are preset commands, and their indexes should be shifted by 21.
                                 // But we don't need to use their indexes.
@@ -200,17 +212,39 @@ void read_voice() {
         token = T_SKILL;
         shift = 3;
 #else
+        // Check length before accessing raw[3]
+        if (raw.length() < 4) {
+          PTLF("Preset command too short, ignoring");
+          return;
+        }
         token = raw[3];
         shift = 4;
 #endif
       }
       if (enableVoiceQ) {
-        const char *cmd = raw.c_str() + shift;
+        const char *cmd = NULL;
+        if (shift > 0) {
+          // Check bounds before accessing raw.c_str() + shift
+          if (raw.length() < (unsigned int)shift) {
+            PTLF("Command string too short for shift, ignoring");
+            return;
+          }
+          cmd = raw.c_str() + shift;
+        } else {
+          cmd = "";
+        }
+        
+        // Add task with safe cmd pointer
         tQueue->addTask(token, shift > 0 ? cmd : "", 2500);
-        if (strlen(cmd) > 0) {
-          char end = cmd[strlen(cmd) - 1];
-          if (!strcmp(cmd, "bk") || !strcmp(cmd, "x") || (end >= 'A' && end <= 'Z')) {
-            tQueue->addTask('k', "up");
+        
+        // Additional safety check before accessing cmd
+        if (shift > 0 && cmd != NULL) {
+          size_t cmdLen = strlen(cmd);
+          if (cmdLen > 0) {
+            char end = cmd[cmdLen - 1];
+            if (!strcmp(cmd, "bk") || !strcmp(cmd, "x") || (end >= 'A' && end <= 'Z')) {
+              tQueue->addTask('k', "up");
+            }
           }
         }
       }

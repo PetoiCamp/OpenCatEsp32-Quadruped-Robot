@@ -232,7 +232,12 @@ public:
   bool read_mpu6050() {
     if (!dmpReady)
       return false;
-    if (dmpGetCurrentFIFOPacket(fifoBuffer)) {  // Get the Latest packet
+    
+    // Try to read FIFO packet
+    // Note: GetCurrentFIFOPacket may call resetFIFO() which can crash if I2C fails
+    // This function is called from readIMU() which already holds imuLockI2c
+    int8_t packetResult = dmpGetCurrentFIFOPacket(fifoBuffer);
+    if (packetResult > 0) {  // Successfully got packet (returns 1 on success, 0 on failure)
       // display Euler angles in degrees
       dmpGetQuaternion(&q, fifoBuffer);
       dmpGetAccel(&aa, fifoBuffer);
@@ -253,6 +258,8 @@ public:
       }
       return true;
     }
+    // packetResult == 0 means no data available (normal)
+    // packetResult < 0 would indicate error, but function returns int8_t (0 or 1)
     return false;
   }
 
@@ -565,17 +572,30 @@ void icm42670Setup(bool calibrateQ = true) {
 // ================================================================
 
 #define PRINT_ACCELERATION
+static unsigned long lastPrint6AxisTime = 0;
+const unsigned long PRINT6AXIS_MIN_INTERVAL = 200;  // Minimum 200ms between prints to prevent stack overflow (sprintf uses significant stack)
+
 void print6Axis() {
   if (!updateGyroQ)
     return;
-  char buffer[50];  // Adjust buffer size as needed
+  
+  // Limit print frequency to prevent stack overflow from frequent calls
+  // sprintf() with float formatting uses significant stack space on ESP32
+  unsigned long currentTime = millis();
+  if (currentTime - lastPrint6AxisTime < PRINT6AXIS_MIN_INTERVAL) {
+    return;  // Skip if called too frequently
+  }
+  lastPrint6AxisTime = currentTime;
+  
+  // Use static buffer to reduce stack usage (shared across calls)
+  static char buffer[60];  // Increased size for safety, but static to avoid stack allocation
 #ifdef IMU_ICM42670
   if (icmQ) {
 #ifdef PRINT_ACCELERATION
-    sprintf(buffer, "ICM:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f\t",  //
+    snprintf(buffer, sizeof(buffer), "ICM:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f\t",  //
             icm.a_real[0] * GRAVITY, icm.a_real[1] * GRAVITY, icm.a_real[2] * GRAVITY, -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
 #else
-    sprintf(buffer, "ICM%7.1f%7.1f%7.1f\t", -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
+    snprintf(buffer, sizeof(buffer), "ICM%7.1f%7.1f%7.1f\t", -icm.ypr[0], icm.ypr[1], icm.ypr[2]);
 #endif
     printToAllPorts(buffer, 0);
   }
@@ -583,10 +603,10 @@ void print6Axis() {
 #ifdef IMU_MPU6050
   if (mpuQ) {
 #ifdef PRINT_ACCELERATION
-    sprintf(buffer, "MCU:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f",  // 7x6 = 42
+    snprintf(buffer, sizeof(buffer), "MCU:%6.2f%6.2f%6.2f%7.1f%7.1f%7.1f",  // 7x6 = 42
             mpu.a_real[0], mpu.a_real[1], mpu.a_real[2], -mpu.ypr[0], mpu.ypr[1], mpu.ypr[2]);  //, aaWorld.z);
 #else
-    sprintf(buffer, "MCU%7.1f%7.1f%7.1f", -mpu.ypr[0], mpu.ypr[1], mpu.ypr[2]);
+    snprintf(buffer, sizeof(buffer), "MCU%7.1f%7.1f%7.1f", -mpu.ypr[0], mpu.ypr[1], mpu.ypr[2]);
 #endif
     printToAllPorts(buffer, 0);
   }
@@ -686,13 +706,21 @@ bool readIMU() {
     // if programming failed, don't try to do anything
     // read a packet from FIFO
     if (mpuQ) {
-      updated |= mpu.read_mpu6050();  // mpu6050's frequency is lower than icm42670
-      for (byte i = 0; i < 3; i++) {
-        xyzReal[i] = mpu.a_real[i];
-        ypr[i] = mpu.ypr[i];
+      // Add error handling for MPU6050 read
+      // If read fails, it returns false and we skip updating data
+      // This prevents crashes from I2C errors
+      bool readSuccess = mpu.read_mpu6050();  // mpu6050's frequency is lower than icm42670
+      if (readSuccess) {
+        updated = true;
+        for (byte i = 0; i < 3; i++) {
+          xyzReal[i] = mpu.a_real[i];
+          ypr[i] = mpu.ypr[i];
+        }
+        // Negate yaw to match polar coordinate convention (positive = counterclockwise)
+        ypr[0] = -ypr[0];
       }
-      // Negate yaw to match polar coordinate convention (positive = counterclockwise)
-      ypr[0] = -ypr[0];
+      // If read fails, don't update data - use previous values
+      // This prevents using corrupted data that could trigger false exceptions
     }
 #endif
     imuLockI2c = false;
@@ -830,10 +858,22 @@ void getImuException() {
 
   if (fabs(ypr[2]) > 85) {  //  imuException = aaReal.z < 0;
     if (mpuQ) {  // MPU is faster in detecting instant acceleration which may lead to false positive
-      if (xyzReal[2] < 1)
+      if (xyzReal[2] < 1) {
         imuException = IMU_EXCEPTION_FLIPPED;  // flipped
-    } else if (xyzReal[2] < -1)
+        // Debug: log IMU data when fall over is detected
+        #ifdef DEBUG_IMU_EXCEPTION
+        PTHL("Fall over detected - ypr[2]: ", ypr[2]);
+        PTHL("Fall over detected - xyzReal[2]: ", xyzReal[2]);
+        #endif
+      }
+    } else if (xyzReal[2] < -1) {
       imuException = IMU_EXCEPTION_FLIPPED;  // flipped
+      // Debug: log IMU data when fall over is detected
+      #ifdef DEBUG_IMU_EXCEPTION
+      PTHL("Fall over detected - ypr[2]: ", ypr[2]);
+      PTHL("Fall over detected - xyzReal[2]: ", xyzReal[2]);
+      #endif
+    }
   }
 #ifndef ROBOT_ARM
   else if (ypr[1] < -50 || ypr[1] > 75)
@@ -904,16 +944,19 @@ void taskIMU(void *parameter) {
   // PTHL("updateGyroQ", updateGyroQ);
   // PTHL("run para:", *running);
   
-  // unsigned long lastDebugPrint = 0;
-  // const unsigned long debugInterval = 5000;  // print every 5 seconds
+  unsigned long lastStackCheck = 0;
+  const unsigned long stackCheckInterval = 10000;  // Check stack every 10 seconds
   
   while (*running) { // check pointer value and global variable
-    // periodic print debug information
-    // if (millis() - lastDebugPrint > debugInterval) {
-      // PTHL("Task running, updateGyroQ =", updateGyroQ);
-      // PTHL("*running =", *running);
-      // lastDebugPrint = millis();
-    // }
+    // Monitor stack usage periodically
+    if (millis() - lastStackCheck > stackCheckInterval) {
+      UBaseType_t stackRemaining = uxTaskGetStackHighWaterMark(NULL);
+      if (stackRemaining < 256) {  // Increased threshold from 512 to 256 (more lenient warning)
+        PTHL("WARNING: IMU task stack low! Remaining bytes: ", stackRemaining);
+      }
+      lastStackCheck = millis();
+    }
+    
     if (millis() - imuTime > 5) {
       imuUpdated = readIMU();
       getImuException();
@@ -923,9 +966,6 @@ void taskIMU(void *parameter) {
       // ensure task is not blocked
       vTaskDelay(1 / portTICK_PERIOD_MS);
     }
-    // for checking the size of unused stack space
-    // vTaskDelay(50 / portTICK_PERIOD_MS);  
-    // Serial.println("Stack high water mark: " + String(uxTaskGetStackHighWaterMark(NULL)) + " bytes");
   }
   
   // PTHL("before delete, updateGyroQ =", updateGyroQ);
@@ -946,7 +986,7 @@ void createIMUTask() {
   
   xTaskCreatePinnedToCore(taskIMU,        // task function
                           "TaskIMU",      // task name
-                          1500,           // task stack size​​
+                          2500,           // task stack size (increased from 2000 to prevent crashes in GetCurrentFIFOPacket)
                           &updateGyroQ,   // parameters
                           1,              // priority
                           &TASK_imu,      // handle

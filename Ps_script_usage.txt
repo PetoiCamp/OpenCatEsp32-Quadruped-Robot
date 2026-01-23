@@ -1,0 +1,1 @@
+powershell -ExecutionPolicy Bypass -File "decode_backtrace.ps1" -ElfPath "...\build\OpenCatEsp32.ino.elf" -Addresses @("0x400841b1", "0x40094461", "0x40083636", "0x400ea427", "0x400ea448", "0x400dca88")

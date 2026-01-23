@@ -349,13 +349,18 @@ int APDS9960::gestureFIFOAvailable()
 int APDS9960::handleGesture()
 {
   const int gestureThreshold = 30;
+  // Use static buffer to avoid stack allocation (128 bytes is significant)
+  static uint8_t fifo_data[128];
   while (true)
   {
     int available = gestureFIFOAvailable();
     if (available <= 0)
       return 0;
 
-    uint8_t fifo_data[128];
+    // Limit available to prevent buffer overflow
+    if (available > 32) {
+      available = 32;  // Max 32 entries * 4 bytes = 128 bytes
+    }
     uint8_t bytes_read = readGFIFO_U(fifo_data, available * 4);
     if (bytes_read == 0)
       return 0;

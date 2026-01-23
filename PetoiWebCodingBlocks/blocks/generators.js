@@ -196,7 +196,7 @@ Blockly.JavaScript.forBlock["delay_ms"] = function (block) {
 // 代码生成:陀螺仪控制代码生成器
 Blockly.JavaScript.forBlock["gyro_control"] = function (block) {
     const state = block.getFieldValue("STATE");
-    const value = state === "1" ? "U" : "u";
+    const value = state === "1" ? "B" : "b";
     const command = encodeCommand("g", [value]);
     return wrapAsyncOperation(`const result = await webRequest("${command}", 5000, true);`) + '\n';
 };
@@ -808,13 +808,40 @@ await (async function() {
     if (typeof window !== 'undefined') window.__gestureActivated = true;
   }
   checkStopExecution();
-  // 只发送一次获取命令，串口返回时由 readSerialData 钩子即时打印并对齐时间戳
-  if (typeof window === 'undefined' || !window.__gesturePolled) {
-    await webRequest("XGP", 5000, true);
-    if (typeof window !== 'undefined') window.__gesturePolled = true;
+  
+  // 每次都发送单次查询命令 XGp（小写p），获取当前手势值
+  // 清空一小部分缓冲区尾部，为新数据腾出空间
+  if (typeof serialBuffer !== 'undefined' && serialBuffer.length > 5000) {
+    serialBuffer = serialBuffer.substring(serialBuffer.length - 3000);
+  } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string' && window.serialBuffer.length > 5000) {
+    window.serialBuffer = window.serialBuffer.substring(window.serialBuffer.length - 3000);
   }
-  // 生成器返回空字符串，避免与钩子重复打印
-  return "";
+  
+  // 记录发送前的缓冲区长度
+  const bufLenBefore = (typeof serialBuffer !== 'undefined') ? serialBuffer.length : 
+                       (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : 0;
+  
+  // 发送单次查询命令
+  await webRequest("XGp", 1000, true);
+  
+  // 等待响应数据到达（最多等待500ms）
+  await new Promise(r => setTimeout(r, 200));
+  
+  // 解析返回的手势值
+  let gestureValue = -1;
+  try {
+    if (typeof getLatestGestureNoWait === 'function') {
+      const result = getLatestGestureNoWait();
+      if (result && result.value !== null && result.value !== undefined) {
+        gestureValue = result.value;
+      }
+    }
+  } catch (e) {
+    gestureValue = -1;
+  }
+  
+  // 返回手势值（0=上, 1=下, 2=左, 3=右, -1=无手势）
+  return gestureValue;
 })()
 `;
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
@@ -1094,30 +1121,50 @@ async function waitForNewCameraCoordinates(prevKey, timeoutMs = 500) {
 // ===== 手势传感器解析与等待 =====
 function parseGestureValueFromText(text) {
     if (!text) return { value: null, key: '' };
-    const norm = String(text).replace(/\r\n/g, "\n");
-    // 取最后一帧：= \n (可选: 数字) \n X
+    const norm = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    
+    // 方法1：尝试匹配 XGp 单次查询格式 =\n数字
+    // 这是最常用的格式，优先匹配
+    const singleQueryRegex = /=[\s\n]*([0-3])[\s\n]*/gi;
+    let match1 = null, lastMatch1 = null, lastIndex1 = -1;
+    while ((match1 = singleQueryRegex.exec(norm)) !== null) {
+        lastMatch1 = match1;
+        lastIndex1 = match1.index;
+    }
+    if (lastMatch1) {
+        const digit = lastMatch1[1];
+        const val = parseInt(digit, 10);
+        const key = `query_${digit}_@${lastIndex1}`;
+        return { value: Number.isInteger(val) ? val : null, key };
+    }
+    
+    // 方法2：尝试匹配完整格式 =\n数字\nX（向后兼容）
     const frameRegex = /=\s*\n([0-3])?\s*\nX/gi;
-    let match = null, lastMatch = null;
-    while ((match = frameRegex.exec(norm)) !== null) {
-        lastMatch = match;
+    let match2 = null, lastMatch2 = null;
+    while ((match2 = frameRegex.exec(norm)) !== null) {
+        lastMatch2 = match2;
     }
-    if (!lastMatch) {
-        // 兼容无数字行：=\nX
-        const emptyRegex = /=\s*\nX/gi;
-        let m2 = null, last2 = null;
-        while ((m2 = emptyRegex.exec(norm)) !== null) {
-            last2 = m2;
-        }
-        if (last2) {
-            const key = '=|X';
-            return { value: null, key };
-        }
-        return { value: null, key: '' };
+    if (lastMatch2) {
+        const digit = lastMatch2[1];
+        const val = (typeof digit !== 'undefined' && digit !== undefined) ? parseInt(digit, 10) : null;
+        const key = `=${digit ?? ''}|X`;
+        return { value: Number.isInteger(val) ? val : null, key };
     }
-    const digit = lastMatch[1];
-    const val = (typeof digit !== 'undefined' && digit !== undefined) ? parseInt(digit, 10) : null;
-    const key = `=${digit ?? ''}|X`;
-    return { value: Number.isInteger(val) ? val : null, key };
+    
+    // 方法3：尝试匹配连续打印模式：独立的数字行（0-3）
+    // 使用split方式避免正则overlapping问题
+    const lines = norm.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (/^[0-3]$/.test(line)) {
+            const val = parseInt(line, 10);
+            // 使用行内容和索引作为key
+            const key = `line_${val}_idx${i}_of${lines.length}`;
+            return { value: val, key };
+        }
+    }
+    
+    return { value: null, key: '' };
 }
 
 function getLatestGestureNoWait() {
