@@ -496,8 +496,7 @@ void readSignal() {
 #ifdef GESTURE
     if (moduleActivatedQ[indexOfModule(EXTENSION_GESTURE)])
     {
-      gestureGetValue = read_gesture();
-      // PTHL("gestureValue02:", gestureGetValue);
+      read_gesture();
     }
 #endif
 #ifdef PIR

@@ -2389,8 +2389,8 @@ void MPU6050::switchSPIEnabled(bool enabled) {
  * @see MPU6050_RA_USER_CTRL
  * @see MPU6050_USERCTRL_FIFO_RESET_BIT
  */
-void MPU6050::resetFIFO() {
-    I2Cdev::writeBit(devAddr, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_FIFO_RESET_BIT, true);
+bool MPU6050::resetFIFO() {
+    return I2Cdev::writeBit(devAddr, MPU6050_RA_USER_CTRL, MPU6050_USERCTRL_FIFO_RESET_BIT, true);
 }
 /** Reset the I2C Master.
  * This bit resets the I2C Master when set to 1 while I2C_MST_EN equals 0.
@@ -2707,7 +2707,11 @@ void MPU6050::setStandbyZGyroEnabled(bool enabled) {
  * @return Current FIFO buffer size
  */
 uint16_t MPU6050::getFIFOCount() {
-    I2Cdev::readBytes(devAddr, MPU6050_RA_FIFO_COUNTH, 2, buffer);
+    int8_t result = I2Cdev::readBytes(devAddr, MPU6050_RA_FIFO_COUNTH, 2, buffer);
+    if (result != 2) {
+        // I2C read failed, return 0 to indicate no data available
+        return 0;
+    }
     return (((uint16_t)buffer[0]) << 8) | buffer[1];
 }
 
@@ -2742,11 +2746,13 @@ uint8_t MPU6050::getFIFOByte() {
     I2Cdev::readByte(devAddr, MPU6050_RA_FIFO_R_W, buffer);
     return buffer[0];
 }
-void MPU6050::getFIFOBytes(uint8_t *data, uint8_t length) {
+bool MPU6050::getFIFOBytes(uint8_t *data, uint8_t length) {
     if(length > 0){
-        I2Cdev::readBytes(devAddr, MPU6050_RA_FIFO_R_W, length, data);
+        int8_t result = I2Cdev::readBytes(devAddr, MPU6050_RA_FIFO_R_W, length, data);
+        return (result == length);
     } else {
     	*data = 0;
+    	return true;
     }
 }
 
@@ -2758,35 +2764,45 @@ void MPU6050::getFIFOBytes(uint8_t *data, uint8_t length) {
  *         0) when no valid data is available
  * ================================================================ */
  int8_t MPU6050::GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
-     int16_t fifoC;
-     // This section of code is for when we allowed more than 1 packet to be acquired
-     uint32_t BreakTimer = micros();
-     do {
-         if ((fifoC = getFIFOCount())  > length) {
+    int16_t fifoC;
+    // This section of code is for when we allowed more than 1 packet to be acquired
+    uint32_t BreakTimer = micros();
+    do {
+        if ((fifoC = getFIFOCount())  > length) {
 
-             if (fifoC > 200) { // if you waited to get the FIFO buffer to > 200 bytes it will take longer to get the last packet in the FIFO Buffer than it will take to  reset the buffer and wait for the next to arrive
-                 resetFIFO(); // Fixes any overflow corruption
-                 fifoC = 0;
-                 while (!(fifoC = getFIFOCount()) && ((micros() - BreakTimer) <= (11000))); // Get Next New Packet
-                 } else { //We have more than 1 packet but less than 200 bytes of data in the FIFO Buffer
-                 uint8_t Trash[BUFFER_LENGTH];
-                 while ((fifoC = getFIFOCount()) > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
-                     fifoC = fifoC - length; // Save the last packet
-                     uint16_t  RemoveBytes;
-                     while (fifoC) { // fifo count will reach zero so this is safe
-                         RemoveBytes = min((int)fifoC, BUFFER_LENGTH); // Buffer Length is different than the packet length this will efficiently clear the buffer
-                         getFIFOBytes(Trash, (uint8_t)RemoveBytes);
-                         fifoC -= RemoveBytes;
-                     }
-                 }
-             }
-         }
-         if (!fifoC) return 0; // Called too early no data or we timed out after FIFO Reset
-         // We have 1 packet
-         if ((micros() - BreakTimer) > (11000)) return 0;
-     } while (fifoC != length);
-     getFIFOBytes(data, length); //Get 1 packet
-     return 1;
+            if (fifoC > 200) { // if you waited to get the FIFO buffer to > 200 bytes it will take longer to get the last packet in the FIFO Buffer than it will take to  reset the buffer and wait for the next to arrive
+                // Check if resetFIFO succeeds, if not return error
+                if (!resetFIFO()) {
+                    // I2C communication failed during FIFO reset
+                    return -1; // Return -1 to indicate I2C error
+                }
+                fifoC = 0;
+                while (!(fifoC = getFIFOCount()) && ((micros() - BreakTimer) <= (11000))); // Get Next New Packet
+                } else { //We have more than 1 packet but less than 200 bytes of data in the FIFO Buffer
+                uint8_t Trash[BUFFER_LENGTH];
+                while ((fifoC = getFIFOCount()) > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
+                    fifoC = fifoC - length; // Save the last packet
+                    uint16_t  RemoveBytes;
+                    while (fifoC) { // fifo count will reach zero so this is safe
+                        RemoveBytes = min((int)fifoC, BUFFER_LENGTH); // Buffer Length is different than the packet length this will efficiently clear the buffer
+                        if (!getFIFOBytes(Trash, (uint8_t)RemoveBytes)) {
+                            // I2C read failed
+                            return -1; // Return -1 to indicate I2C error
+                        }
+                        fifoC -= RemoveBytes;
+                    }
+                }
+            }
+        }
+        if (!fifoC) return 0; // Called too early no data or we timed out after FIFO Reset
+        // We have 1 packet
+        if ((micros() - BreakTimer) > (11000)) return 0;
+    } while (fifoC != length);
+    if (!getFIFOBytes(data, length)) {
+        // I2C read failed when getting the packet
+        return -1; // Return -1 to indicate I2C error
+    }
+    return 1;
 }
 
 

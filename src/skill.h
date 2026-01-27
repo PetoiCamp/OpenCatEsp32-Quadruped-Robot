@@ -280,7 +280,7 @@ public:
     if (period < 0) {  // behaviors
       interruptedDuringBehavior = false;
       int8_t repeat = loopCycle[2] >= 0 && loopCycle[2] < 2 ? 0 : loopCycle[2] - 1;
-      bool gyroBalanceQlag = gyroBalanceQ;
+      gyroBalanceQlag = gyroBalanceQ;
       gyroBalanceQ = strcmp(skillName, "bf") && strcmp(skillName, "ff") && strcmp(skillName, "flipF") && strcmp(skillName, "flipD") && strcmp(skillName, "flipL") && strcmp(skillName, "flipR") && strcmp(skillName, "pd") && strcmp(skillName, "hds") && strcmp(skillName, "bx") && strstr(skillName, "rl") == NULL;  // won't read gyro for fast motion
       for (byte c = 0; c < abs(period); c++) {                                                                                                                                                                                                                                                                         // the last two in the row are transition speed and delay
         Stream *serialPort = NULL;
@@ -316,6 +316,7 @@ public:
           PTHL("imuException: ", imuException);
           PTLF("Behavior interrupted");
           interruptedDuringBehavior = true;
+          gyroBalanceQ = gyroBalanceQlag;  // Restore gyroBalanceQ before returning
           return;
         }
         // printToAllPorts("Progress: " + String(c + 1) + "/" + abs(period));

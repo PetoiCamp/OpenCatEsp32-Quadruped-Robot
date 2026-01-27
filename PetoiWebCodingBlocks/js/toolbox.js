@@ -174,6 +174,7 @@ function createToolbox() {
                     { kind: "block", type: "getUltrasonicDistance" },
                     { kind: "block", type: "getCameraCoordinate" },
                     { kind: "block", type: "get_gesture_value" },
+                    { kind: "block", type: "exit_gesture_mode" },
                     { kind: "block", type: "send_custom_command",
                         inputs: {
                             COMMAND: {
@@ -512,6 +513,20 @@ function blocklyGlobalConfig() {
                 output: "Number",
                 colour: COMMUNICATION_COLOR, // 通信：红色
                 tooltip: "Read gesture value (0:Up,1:Down,2:Left,3:Right)"
+            });
+        },
+    };
+
+    // 退出手势识别模式积木
+    Blockly.Blocks["exit_gesture_mode"] = {
+        init: function () {
+            this.jsonInit({
+                type: "exit_gesture_mode",
+                message0: "Exit gesture recognition mode",
+                previousStatement: null,
+                nextStatement: null,
+                colour: COMMUNICATION_COLOR, // 通信：红色
+                tooltip: "Exit gesture recognition mode and stop gesture value printing"
             });
         },
     };

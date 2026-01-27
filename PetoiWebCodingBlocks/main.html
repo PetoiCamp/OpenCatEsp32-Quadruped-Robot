@@ -1105,6 +1105,24 @@
       // 检查是否有有效的串口连接
       const hasValidSerial = writer && port && port.readable && port.writable;
 
+      // 检查WebSocket连接状态（通过window.client和currentDeviceIP判断）
+      const hasValidWebSocket = (typeof window.client !== 'undefined' && window.client && 
+                                 window.client.connected && 
+                                 window.client.ws && 
+                                 window.client.ws.readyState === WebSocket.OPEN) ||
+                                (typeof currentDeviceIP !== 'undefined' && 
+                                 currentDeviceIP && 
+                                 currentDeviceIP !== '192.168.4.1');
+
+      // 如果两种通信方式都可用，优先使用串口通信模式
+      if (hasValidSerial && hasValidWebSocket)
+      {
+        if (showDebug) console.log(getText("bothConnectionsAvailableUsingSerial") || "检测到串口和WebSocket连接，优先使用串口通信模式");
+        executeRunCode();
+        return;
+      }
+
+      // 如果只有串口连接可用，使用串口
       if (hasValidSerial)
       {
         // 如果有串口连接，直接执行程序，让makeConnection积木处理连接逻辑

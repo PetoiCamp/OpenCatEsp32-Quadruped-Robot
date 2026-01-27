@@ -847,6 +847,96 @@ await (async function() {
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
 };
 
+// 新增：退出手势识别模式积木的代码生成器
+Blockly.JavaScript.forBlock["exit_gesture_mode"] = function (block) {
+    let code = `
+await (async function() {
+  checkStopExecution();
+  
+  // 辅助函数：等待特定响应（用于WebSocket和串口通信）
+  async function waitForResponse(expectedValue, timeout = 5000) {
+    const startTime = Date.now();
+    const checkInterval = 50; // 每50ms检查一次
+    
+    return new Promise((resolve, reject) => {
+      const checkResponse = () => {
+        checkStopExecution();
+        
+        if (Date.now() - startTime > timeout) {
+          reject(new Error('等待响应超时'));
+          return;
+        }
+        
+        // 获取缓冲区数据（支持WebSocket和串口）
+        let buffer = '';
+        if (typeof window !== 'undefined' && window.__isSerialMode) {
+          // 串口模式
+          if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') {
+            buffer = serialBuffer;
+          } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') {
+            buffer = window.serialBuffer;
+          }
+        } else {
+          // WebSocket模式
+          if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') {
+            buffer = serialBuffer;
+          }
+        }
+        
+        if (buffer) {
+          // 按行分割，查找匹配的响应
+          const lines = buffer.split(/[\\r\\n]+/).map(l => l.trim());
+          for (let i = lines.length - 1; i >= 0; i--) {
+            if (lines[i] === expectedValue) {
+              resolve(expectedValue);
+              return;
+            }
+          }
+        }
+        
+        // 继续等待
+        setTimeout(checkResponse, checkInterval);
+      };
+      
+      checkResponse();
+    });
+  }
+  
+  try {
+    // 发送Xg指令退出手势识别模式
+    let response = await webRequest("Xg", 5000, true);
+    await new Promise(resolve => setTimeout(resolve, 100)); // 等待100ms
+    
+    // 检查响应（WebSocket模式可能直接返回，串口模式需要从缓冲区读取）
+    let foundX = false;
+    if (response && (typeof response === 'string' || typeof response === 'number')) {
+      const responseStr = String(response);
+      if (responseStr.includes('X') || responseStr.trim() === 'X') {
+        foundX = true;
+      }
+    }
+    
+    // 如果WebSocket模式没找到，或者使用串口模式，从缓冲区等待"X"
+    if (!foundX) {
+      try {
+        await waitForResponse('X', 3000);
+      } catch (e) {
+        // 如果超时，继续执行（可能已经收到响应但没检测到）
+      }
+    }
+    
+    // 重置初始化标志，以便下次可以重新初始化
+    if (typeof window !== 'undefined') {
+      window.__gestureInitialized = false;
+    }
+  } catch (error) {
+    console.error('退出手势识别模式失败:', error);
+  }
+})();
+`;
+    return code;
+};
+
 function encodeCommand(token, params) {
     if (token.charCodeAt(0) >= 65 && token.charCodeAt(0) <= 90) {
         // 大写字母开头的指令，直接按字节发送
@@ -1123,45 +1213,17 @@ function parseGestureValueFromText(text) {
     if (!text) return { value: null, key: '' };
     const norm = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     
-    // 方法1：尝试匹配 XGp 单次查询格式 =\n数字
-    // 这是最常用的格式，优先匹配
-    const singleQueryRegex = /=[\s\n]*([0-3])[\s\n]*/gi;
-    let match1 = null, lastMatch1 = null, lastIndex1 = -1;
-    while ((match1 = singleQueryRegex.exec(norm)) !== null) {
-        lastMatch1 = match1;
-        lastIndex1 = match1.index;
+    // 只匹配完整格式 =\n数字\nX（支持 -1, 0, 1, 2, 3）
+    const frameRegex = /=\s*\n(-1|[0-3])?\s*\nX/gi;
+    let match = null, lastMatch = null;
+    while ((match = frameRegex.exec(norm)) !== null) {
+        lastMatch = match;
     }
-    if (lastMatch1) {
-        const digit = lastMatch1[1];
-        const val = parseInt(digit, 10);
-        const key = `query_${digit}_@${lastIndex1}`;
-        return { value: Number.isInteger(val) ? val : null, key };
-    }
-    
-    // 方法2：尝试匹配完整格式 =\n数字\nX（向后兼容）
-    const frameRegex = /=\s*\n([0-3])?\s*\nX/gi;
-    let match2 = null, lastMatch2 = null;
-    while ((match2 = frameRegex.exec(norm)) !== null) {
-        lastMatch2 = match2;
-    }
-    if (lastMatch2) {
-        const digit = lastMatch2[1];
-        const val = (typeof digit !== 'undefined' && digit !== undefined) ? parseInt(digit, 10) : null;
+    if (lastMatch) {
+        const digit = lastMatch[1];
+        const val = (typeof digit !== 'undefined' && digit !== undefined && digit !== '') ? parseInt(digit, 10) : null;
         const key = `=${digit ?? ''}|X`;
-        return { value: Number.isInteger(val) ? val : null, key };
-    }
-    
-    // 方法3：尝试匹配连续打印模式：独立的数字行（0-3）
-    // 使用split方式避免正则overlapping问题
-    const lines = norm.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i];
-        if (/^[0-3]$/.test(line)) {
-            const val = parseInt(line, 10);
-            // 使用行内容和索引作为key
-            const key = `line_${val}_idx${i}_of${lines.length}`;
-            return { value: val, key };
-        }
+        return { value: (val !== null && Number.isInteger(val)) ? val : null, key };
     }
     
     return { value: null, key: '' };

@@ -481,7 +481,11 @@ int8_t I2Cdev::readWords(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint1
  */
 bool I2Cdev::writeBit(uint8_t devAddr, uint8_t regAddr, uint8_t bitNum, uint8_t data) {
     uint8_t b;
-    readByte(devAddr, regAddr, &b);
+    int8_t result = readByte(devAddr, regAddr, &b);
+    if (result <= 0) {
+        // I2C read failed, return false to indicate failure
+        return false;
+    }
     b = (data != 0) ? (b | (1 << bitNum)) : (b & ~(1 << bitNum));
     return writeByte(devAddr, regAddr, b);
 }

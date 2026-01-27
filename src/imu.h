@@ -237,6 +237,10 @@ public:
     // Note: GetCurrentFIFOPacket may call resetFIFO() which can crash if I2C fails
     // This function is called from readIMU() which already holds imuLockI2c
     int8_t packetResult = dmpGetCurrentFIFOPacket(fifoBuffer);
+    if (packetResult < 0) {
+      // I2C communication error occurred, return false to indicate failure
+      return false;
+    }
     if (packetResult > 0) {  // Successfully got packet (returns 1 on success, 0 on failure)
       // display Euler angles in degrees
       dmpGetQuaternion(&q, fifoBuffer);

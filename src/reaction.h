@@ -349,6 +349,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       autoSwitch = RANDOM_MIND;
       initialBoot = false;
     }
+
 #ifdef PWM_LED_PIN
     if (autoLedQ)
       digitalWrite(PWM_LED_PIN, HIGH);
@@ -373,6 +374,9 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       gyroBalanceQ = true;  // This is the default state for this "Q" boolean with all tokens except (T_SERVO_CALIBRATE
                             // && when lastToken is one of the listed values)
       printToAllPorts('G');
+    }
+    else {
+      gyroBalanceQ = gyroBalanceQlag;  // Restore gyroBalanceQ before returning
     }
     if (token != T_PAUSE && !tStep) {
       tStep = 1;
@@ -504,6 +508,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         {
           gyroBalanceQ = !gyroBalanceQ;
           token = gyroBalanceQ ? 'G' : 'g'; // G for activated gyro
+          gyroBalanceQlag = gyroBalanceQ;
           resetAdjust();
         }
         else
@@ -522,7 +527,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             
             // Wait for IMU task to terminate completely
             if (TASK_imu != NULL) {
-//<<<<<<< HEAD
               PTLF("Waiting for IMU task to terminate before calibration...");
               // Wait for IMU task to terminate
               while (eTaskGetState(TASK_imu) != eDeleted) {
@@ -532,29 +536,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                   }
                 vTaskDelay(100 / portTICK_PERIOD_MS);
               }
-//=======
-//              eTaskState taskState = eTaskGetState(TASK_imu);
-//              PTHL("Task state:", taskState);
-//            
-//              if (taskState != eDeleted) {
-//                // Wait for task to terminate naturally
-//                PTLF("Waiting for IMU task to terminate...");
-//                unsigned long startTime = millis();
-//                const unsigned long timeout = 3000; // 3 second timeout
-//                
-//                // Wait for timeout
-//                while (TASK_imu != NULL && (millis() - startTime) <= timeout) {
-//                  delay(200);
-//                }
-//                
-//                // Handle timeout
-//                if (TASK_imu != NULL) {
-//                  PTLF("IMU task termination timeout - set task handle to NULL");
-//                  TASK_imu = NULL;    // Set task handle to NULL
-//                }
-//              }
-//                delay(50);  // Wait for IMU task to fully terminate
-//>>>>>>> pr/35
             }
             
             // Create calibration task to run on core 0
@@ -600,6 +581,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 gyroBalanceQ = (newCmd[i] == C_GYRO_BALANCE); // if newCmd[i] == T_GYRO_FINENESS, gyroBalanceQ is true. else is false.
                 if (!gyroBalanceQ) {
                   gyroBalanceQ = false;
+                  gyroBalanceQlag = gyroBalanceQ;
                   printToAllPorts('g');
                   resetAdjust();
                 }
@@ -1229,10 +1211,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 }
 
                 if (gesturePrintQ == 1) {
-                  int readGesture = read_gesture();
+                  // int readGesture = read_gesture();
                   printToAllPorts('=');
-                  if (readGesture != GESTURE_NONE)
-                    printToAllPorts(readGesture);
+                  printToAllPorts(gestureGetValue);
+                  lastGesture = gestureGetValue;
+                  gestureGetValue=GESTURE_NONE;
                   gesturePrintQ = 0;  // if the command is XGp, the gesture will print the detected result only once
                 }
                 break;
@@ -1618,6 +1601,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
     //   tQueue->lastTask = NULL;
     //   PTL(newCmd);
     // }
+    // PTHL("Exiting T_SKILL, token=", token);
   }
 
   // The code from here to the end of reaction() will conditionally run every time loop() in OpenCatEsp32.ino runs
@@ -1635,11 +1619,19 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
   } else if (readFeedbackQ)  // Conditionally read servo feedback and print servo angles
     servoFeedback(measureServoPin);
   // }
-  else
+  //else
 #ifdef GESTURE
     if (gesturePrintQ == 2) {
-    if (gestureGetValue != GESTURE_NONE)
-      printToAllPorts(gestureGetValue);
+      if (gestureGetValue != GESTURE_NONE) {
+        printToAllPorts(gestureGetValue);
+        lastGesture = gestureGetValue;
+        gestureGetValue = GESTURE_NONE;
+      }
+      // if (gestureGetValue != GESTURE_NONE || lastGesture != GESTURE_NONE) {
+      //   printToAllPorts(gestureGetValue);
+      //   lastGesture = gestureGetValue;
+      //   gestureGetValue = GESTURE_NONE;
+      // }
   }
 #endif
 #ifdef CAMERA

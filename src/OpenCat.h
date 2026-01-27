@@ -456,6 +456,7 @@ bool autoLedQ = false;
 bool updateGyroQ = true;
 bool fineAdjustQ = true;
 bool gyroBalanceQ = true;  // true = CONTINUOUSLY access recovery options in dealWithExceptions().
+bool gyroBalanceQlag = true;  // to record the origal gyroBalanceQ value.
 bool printGyroQ = false;  // true = CONTINUOUSLY access print6Axis() which prints Gyro (IMU) data.
 bool readFeedbackQ = false;  // true = CONTINUOUSLY access servoFeedback() which prints servo angles.
 bool followFeedbackQ = false;  // true = CONTINUOUSLY access servoFollow() which follows servo angles as servos are
