@@ -1201,6 +1201,10 @@
       programStartTime = now; // 记录程序启动时间
       isProgramRunning = true;
       stopExecution = false; // 重置停止标志
+      // 每次运行前清空控制台日志，避免多次运行后 DOM 积压导致手势识别等实时性逐渐下降
+      if (typeof clearConsole === 'function') {
+        clearConsole();
+      }
       // 重置会话级模式标志，确保本次运行首次调用会发送初始化指令（如 XCr / XCP、XGr / XGP）
       if (typeof window !== 'undefined') {
         window.__cameraActivated = false;
@@ -1210,6 +1214,10 @@
         window.__gestureActivated = false;
         window.__gesturePolled = false;
         window.__lastGestureFrameKey = '';
+        // 重置手势轮询相关状态，避免再次运行时节流/缓存沿用上次运行导致实时性下降
+        window.__lastGesturePollTs = 0;
+        window.__lastGestureValue = undefined;
+        window.__gesturePollInFlight = false;
       }
       if (showDebug) console.log(getText("programStartedStopExecutionFalse"));
 
@@ -1287,7 +1295,7 @@ async function serialRequest(command, timeout = 5000, isRest = false, expectedRe
           await window.petoiClient.disconnect();
         }
         
-        window.petoiClient = new PetoiAsyncClient(\`ws://\${currentDeviceIP}:81\`);
+        window.petoiClient = new PetoiAsyncClient("ws://" + currentDeviceIP + ":81");
         await window.petoiClient.connect();
         
         // 处理命令格式
@@ -1421,7 +1429,7 @@ async function serialRequest(command, timeout = 5000, isRest = false, expectedRe
           await window.petoiClient.disconnect();
         }
         
-        window.petoiClient = new PetoiAsyncClient(\`ws://\${currentDeviceIP}:81\`);
+        window.petoiClient = new PetoiAsyncClient("ws://" + currentDeviceIP + ":81");
         await window.petoiClient.connect();
         
         // 处理命令格式
@@ -1799,16 +1807,28 @@ async function webRequest(command, timeout = 5000, isRest = false, expectedRespo
       finalCommand = "b64:" + btoa(dataText);
     }
     
-    // 在发送命令前记录到Console Log
+    // 在发送命令前记录到Console Log（异步执行，避免 DOM 操作阻塞命令发送）
     if (showSentCommands && typeof logSentCommand === 'function') {
-      logSentCommand(finalCommand);
+      setTimeout(() => { try { logSentCommand(finalCommand); } catch (e) {} }, 0);
     }
     
-    const result = await window.petoiClient.sendCommand(finalCommand, timeout, expectedResponse);
+    let result = await window.petoiClient.sendCommand(finalCommand, timeout, expectedResponse);
     
-    // 在收到响应后记录到Console Log
+    // 与 communication.js 一致：单元素数组展开为标量，便于传感器积木（如手势值）解析
+    if (Array.isArray(result) && result.length === 1) {
+      result = result[0];
+    }
+    
+    // 在收到响应后记录到Console Log（异步执行，避免 DOM 操作阻塞 return，影响手势轮询实时性）
+    // XGp 无手势(-1) 时不记录，避免大量 -1 轮询刷屏导致 DOM 积压、后续手势识别变慢
     if (showSentCommands && typeof logCommandResponse === 'function') {
-      logCommandResponse(result);
+      const isXGpNoGesture = (command === 'XGp' || finalCommand === 'XGp') && (
+        result === -1 || result === '-1' ||
+        (typeof result === 'string' && (result.trim() === '-1' || (result.match(/-?\\d+/) && parseInt(result.match(/-?\\d+/)[0], 10) === -1)))
+      );
+      if (!isXGpNoGesture) {
+        setTimeout(() => { try { logCommandResponse(result); } catch (e) {} }, 0);
+      }
     }
     
     return result;
@@ -1824,7 +1844,7 @@ async function makeConnection(ip) {
     await window.petoiClient.disconnect();
   }
   
-  window.petoiClient = new PetoiAsyncClient(\`ws://\${ip}:81\`);
+  window.petoiClient = new PetoiAsyncClient("ws://" + ip + ":81");
   await window.petoiClient.connect();
   if (showDebug) console.log(getText("webSocketConnected") + ": " + ip);
   return true;
@@ -1843,94 +1863,18 @@ async function closeConnection() {
         closeConnectionCall = 'await closeConnection();';
       }
 
-      // 包装整个代码到一个异步函数中
-      const runCodeBlock = `
-function asyncLog(message) {
-  return new Promise((resolve) => {
-    console.log(message);
-    setTimeout(resolve, 0);
-  });
-}
-
-// 检查停止标志的函数
-function checkStopExecution() {
-  if (stopExecution) {
-    throw new Error(getText("programExecutionStoppedByUser"));
-  }
-}
-
-// 改进的循环停止检查函数
-function checkStopExecutionInLoop() {
-  if (stopExecution) {
-    throw new Error(getText("programExecutionStoppedByUser"));
-  }
-  // 给其他任务执行的机会，包括停止检查
-  return new Promise(resolve => setTimeout(resolve, 0));
-}
-
-${connectionFunctions}
-
-(async function () {
-  try {
-    checkStopExecution();
-    
-${code}
-
-    checkStopExecution();
-    // 程序结束时自动发送休息指令'd'
-    await asyncLog(getText("programEndingRestCommand"));
-    ${restCommand}
-  } catch (e) {
-    if (e.message === "程序执行被用户停止") {
-      // 只在catch块中打印一次停止消息，避免重复
-      await asyncLog(getText("programExecutionStopped"));
-      // 程序被用户停止时，立即发送休息指令'd'（在关闭连接之前）
-      try {
-        await asyncLog(getText("programEndingRestCommand"));
-        ${hasValidSerial ? 'await serialRequest("d", 5000, true, null, true);' : 'await webRequest("d", 5000, true, null, true);'} // 绕过停止标志检查
-        if (showDebug) console.log("Rest command sent successfully");
-      } catch (restError) {
-        console.error(getText("restCommandFailed") + restError.message);
-      }
-    } else {
-      console.error(getText("programExecutionError") + ":", e.message);
-      console.error(getText("restCommandFailed") + e.message);
-    }
-  }
-  ${closeConnectionCall}
-  console.log(getText("taskEnded"));
-})().catch((e) => {
-  if (e.message === "程序执行被用户停止") {
-    // 停止消息已在try-catch中处理，这里不需要重复打印
-    // console.log(getText("programExecutionStopped"));
-  } else {
-    console.error(getText("networkRequestError") + ": " + e.message);
-    alert(getText("networkRequestError") + ": " + e.message);
-  }
-}).finally(() => {
-  // 程序执行完成后，重置运行状态
-  if (showDebug) console.log(getText("programExecutionCompletedResetState"));
-  isProgramRunning = false;
-  stopExecution = false;
-  
-  // 记录程序结束时间，用于防抖
-  lastRunCodeTime = Date.now();
-  
-  // 隐藏停止按钮，显示运行按钮，并重置停止按钮样式
-  const stopBtn = document.getElementById('stopCodeBtn');
-  stopBtn.style.display = 'none';
-  stopBtn.style.backgroundColor = '';
-  stopBtn.style.color = '';
-  document.querySelector('button[onclick="runCode()"]').style.display = 'inline-block';
-  
-  // 清理控制台输入界面
-  if (typeof clearConsoleInput === 'function') {
-    clearConsoleInput();
-  }
-  
-  if (showDebug) console.log(getText("programExecutionCompleted"));
-});
-`
+      // 用字符串拼接构建 runCodeBlock，避免在 file:// 下因模板字符串内含 ${code} 导致解析截断（Invalid or unexpected token）
+      code = (code == null) ? '' : String(code);
+      // 防止用户代码或 connectionFunctions 中含“结束 script 标签”导致 HTML 解析器提前关闭 script 或 eval 报错（本注释避免写该标签字面量）
+      function escapeScriptTag(s) { return (s == null ? '' : String(s)).replace(new RegExp('<' + '/script>', 'gi'), '\\u003c/script>'); }
+      code = escapeScriptTag(code);
+      connectionFunctions = escapeScriptTag(connectionFunctions);
+      const runCodePrefix = "function asyncLog(message) {\n  return new Promise((resolve) => {\n    console.log(message);\n    setTimeout(resolve, 0);\n  });\n}\n\nfunction checkStopExecution() {\n  if (stopExecution) {\n    throw new Error(getText(\"programExecutionStoppedByUser\"));\n  }\n}\n\nfunction checkStopExecutionInLoop() {\n  if (stopExecution) {\n    throw new Error(getText(\"programExecutionStoppedByUser\"));\n  }\n  return new Promise(resolve => setTimeout(resolve, 0));\n}\n\n" + connectionFunctions + "\n\n(async function () {\n  try {\n    checkStopExecution();\n\n";
+      const runCodeSuffix = "\n    checkStopExecution();\n    await asyncLog(getText(\"programEndingRestCommand\"));\n    " + restCommand + "\n  } catch (e) {\n    if (e.message === \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n      await asyncLog(getText(\"programExecutionStopped\"));\n      try {\n        await asyncLog(getText(\"programEndingRestCommand\"));\n        " + (hasValidSerial ? 'await serialRequest("d", 5000, true, null, true);' : 'await webRequest("d", 5000, true, null, true);') + "\n        if (showDebug) console.log(\"Rest command sent successfully\");\n      } catch (restError) {\n        console.error(getText(\"restCommandFailed\") + restError.message);\n      }\n    } else {\n      console.error(getText(\"programExecutionError\") + \":\", e.message);\n      console.error(getText(\"restCommandFailed\") + e.message);\n    }\n  }\n  " + closeConnectionCall + "\n  console.log(getText(\"taskEnded\"));\n})().catch((e) => {\n  if (e.message !== \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n    console.error(getText(\"networkRequestError\") + \": \" + e.message);\n    alert(getText(\"networkRequestError\") + \": \" + e.message);\n  }\n}).finally(() => {\n  if (showDebug) console.log(getText(\"programExecutionCompletedResetState\"));\n  isProgramRunning = false;\n  stopExecution = false;\n  var stopBtn = document.getElementById('stopCodeBtn');\n  if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.style.backgroundColor = ''; stopBtn.style.color = ''; }\n  var runBtn = document.querySelector('button[onclick=\"runCode()\"]');\n  if (runBtn) runBtn.style.display = 'inline-block';\n  if (typeof clearConsoleInput === 'function') clearConsoleInput();\n  if (showDebug) console.log(getText(\"programExecutionCompleted\"));\n});\n";
+      // 对完整拼接结果再转义一次，防止“script 结束标签”字面量混入导致 eval 或解析异常
+      let runCodeBlock = escapeScriptTag(runCodePrefix + code + runCodeSuffix);
+      // 将智能引号等易导致 Invalid or unexpected token 的字符规范为 ASCII
+      runCodeBlock = runCodeBlock.replace(/\u201c/g, '"').replace(/\u201d/g, '"').replace(/\u2018/g, "'").replace(/\u2019/g, "'");
       try
       {
         eval(runCodeBlock);
@@ -1938,8 +1882,21 @@ ${code}
       {
         console.info("code:");
         console.info(runCodeBlock);
-        console.error(getText("networkRequestError") + ": " + e.message);
-        alert(getText("networkRequestError") + ": " + e.message);
+        // 一点运行就报错多为 eval 语法错误（如 Unexpected/Invalid token），与网络无关
+        const isSyntaxError = e instanceof SyntaxError || (e.message && (e.message.indexOf("Unexpected token") !== -1 || e.message.indexOf("Unexpected end") !== -1 || e.message.indexOf("Invalid or unexpected token") !== -1));
+        const errMsg = isSyntaxError
+          ? (getText("generatedCodeSyntaxError") || "Generated code syntax error") + ": " + e.message
+          : getText("networkRequestError") + ": " + e.message;
+        console.error(errMsg);
+        if (e.lineNumber != null || e.columnNumber != null) {
+          console.error("Position: line " + (e.lineNumber || "?") + ", column " + (e.columnNumber || "?"));
+        }
+        var errOffset = (e.columnNumber != null && e.columnNumber > 0) ? e.columnNumber - 1 : runCodeBlock.indexOf("<");
+        if (errOffset >= 0) {
+          var snippet = runCodeBlock.substring(Math.max(0, errOffset - 50), Math.min(runCodeBlock.length, errOffset + 50));
+          console.error("Snippet around error position: ..." + snippet + "...");
+        }
+        alert(errMsg + (isSyntaxError ? "\n\n" + (getText("checkBlocksForSpecialChars") || "Check blocks for special characters (e.g. < or quotes).") : ""));
         // 发生错误时也要重置运行状态和按钮样式
         isProgramRunning = false;
         const stopBtn = document.getElementById('stopCodeBtn');
@@ -2680,7 +2637,8 @@ ${code}
 
     function clearConsole()
     {
-      document.getElementById('consoleLog').innerHTML = '';
+      const el = document.getElementById('consoleLog');
+      if (el) el.innerHTML = '';
     }
 
     // 生成调试日志
@@ -5266,21 +5224,33 @@ Generated at: ${now.toISOString()}
       }
     }
 
-    // 等待串口返回指定token单独一行（用于动作完成判定）
-    async function waitForSerialTokenLine(expectedToken = 'm', timeoutMs = 15000)
+    // 等待串口返回指定 token 单独一行（用于动作完成判定）
+    // 重要：只能匹配“新增数据”里的 token，避免命中缓冲区里旧的 token（会导致后续动作不等待就继续执行）
+    // - expectedToken: 例如 'k' / 'm' / 'd' / 'B' ...
+    // - timeoutMs: 超时毫秒
+    // - fromIndex: 可选，指定从 serialBuffer 的哪个下标开始等待（推荐在发送命令前记录 serialBuffer.length 传入）
+    async function waitForSerialTokenLine(expectedToken = 'm', timeoutMs = 15000, fromIndex)
     {
       try
       {
         const start = Date.now();
-        const buf = (typeof serialBuffer === 'string') ? serialBuffer : '';
-        // 先扫描缓冲区尾部已有内容，避免在调用前刚好到达的标记被漏检
-        const preScanStart = Math.max(0, buf.length - 4096);
-        if (buf.length > 0)
+        const buf = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+
+        // 只从指定起点（或当前末尾）开始匹配，避免命中旧 token
+        let lastIndex = (typeof fromIndex === 'number' && isFinite(fromIndex) && fromIndex >= 0)
+          ? Math.min(fromIndex, buf.length)
+          : buf.length;
+
+        // 先检查 fromIndex~当前末尾这一段（覆盖“token 刚好在调用前到达”的竞态）
+        if (buf.length > lastIndex)
         {
-          const preTail = buf.substring(preScanStart);
-          const preNorm = preTail.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-          const preLines = preNorm.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-          for (const line of preLines)
+          const fragment0 = buf.substring(lastIndex);
+          lastIndex = buf.length;
+          const norm0 = fragment0.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          const lines0 = norm0.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+          for (const line of lines0)
           {
             if (line === expectedToken)
             {
@@ -5288,8 +5258,8 @@ Generated at: ${now.toISOString()}
             }
           }
         }
+
         // 然后进入增量等待，仅消费新增内容
-        let lastIndex = buf.length;
         while (Date.now() - start < timeoutMs)
         {
           const currentLen = typeof serialBuffer === 'string' ? serialBuffer.length : 0;

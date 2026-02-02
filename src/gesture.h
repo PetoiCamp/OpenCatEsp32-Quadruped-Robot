@@ -24,7 +24,7 @@ int8_t gesturePrintQ = 0;
 int gestureGetValue = GESTURE_NONE;
 int lastGesture = GESTURE_NONE;
 unsigned long lastValidGestureTime = 0;
-const unsigned long GESTURE_MIN_INTERVAL = 500;  // Minimum 0.5 seconds between gestures
+const unsigned long GESTURE_MIN_INTERVAL = 500;  // Maintaining the recognized gesture value 0.5 seconds.
 
 unsigned long lastValidGesTime = 0;
 const unsigned long GESTURE_INTERVAL = 30;  // Minimum 0.03 seconds between gestures

@@ -1234,7 +1234,7 @@ function blocklyGlobalConfig() {
                 .appendField(new Blockly.FieldDropdown(options), "COMMAND");
             this.appendDummyInput()
                 .appendField(delayLabel)
-                .appendField(new Blockly.FieldNumber(0, 0, 10, 0.01), "DELAY")
+                .appendField(new Blockly.FieldNumber(0.2, 0, 10, 0.01), "DELAY")
                 .appendField(unitLabel);
             this.setInputsInline(true);
             this.setPreviousStatement(true, null);
@@ -1262,7 +1262,7 @@ function blocklyGlobalConfig() {
                 .appendField(new Blockly.FieldDropdown(options), "COMMAND");
             this.appendDummyInput()
                 .appendField(delayLabel)
-                .appendField(new Blockly.FieldNumber(0, 0, 10, 0.01), "DELAY")
+                .appendField(new Blockly.FieldNumber(0.2, 0, 10, 0.01), "DELAY")
                 .appendField(unitLabel);
             this.setInputsInline(true);
             this.setPreviousStatement(true, null);

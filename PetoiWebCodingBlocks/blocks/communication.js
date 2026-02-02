@@ -110,11 +110,11 @@ function webRequest(command, timeout = TIMEOUT_CONFIG.WEB_REQUEST.DEFAULT_TIMEOU
           return;
         }
         
-        // 如果showSentCommands开关激活，在Console Log中显示发送的命令
+        // 如果showSentCommands开关激活，在Console Log中显示发送的命令（异步执行，避免 DOM 操作阻塞）
         if (typeof showSentCommands !== 'undefined' && showSentCommands) {
           // 调用logSentCommand显示在Console Log中（如果该函数存在）
           if (typeof logSentCommand === 'function') {
-            logSentCommand(command);
+            setTimeout(() => { try { logSentCommand(command); } catch (e) {} }, 0);
           } else {
             // 回退到console.log（兼容旧版本）
             let commandToDisplay = displayCommand || command;
@@ -135,13 +135,20 @@ function webRequest(command, timeout = TIMEOUT_CONFIG.WEB_REQUEST.DEFAULT_TIMEOU
         
         let result = await window.client.sendCommand(command, timeout);
         
-        // 在Console Log中显示响应（如果showSentCommands开关激活）
-        if (typeof showSentCommands !== 'undefined' && showSentCommands && typeof logCommandResponse === 'function') {
-          logCommandResponse(result);
-        }
-        
         if (Array.isArray(result) && result.length == 1) {
           result = result[0];
+        }
+        
+        // 在Console Log中显示响应（异步执行，避免 DOM 操作阻塞 resolve，影响传感器轮询实时性）
+        // XGp 无手势(-1) 时不记录，避免大量 -1 轮询刷屏导致 DOM 积压、后续手势识别变慢
+        if (typeof showSentCommands !== 'undefined' && showSentCommands && typeof logCommandResponse === 'function') {
+          const isXGpNoGesture = command === 'XGp' && (
+            result === -1 || result === '-1' ||
+            (typeof result === 'string' && (result.trim() === '-1' || (result.match(/-?\d+/) && parseInt(result.match(/-?\d+/)[0], 10) === -1)))
+          );
+          if (!isXGpNoGesture) {
+            setTimeout(() => { try { logCommandResponse(result); } catch (e) {} }, 0);
+          }
         }
         
         // 根据 needResponse 参数决定是否返回结果

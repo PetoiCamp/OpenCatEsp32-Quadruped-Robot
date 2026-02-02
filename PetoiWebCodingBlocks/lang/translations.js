@@ -277,6 +277,8 @@ const TRANSLATIONS = {
     "asyncSendingCommand": "异步发送命令: ",
     "asyncReceivedResponse": "异步收到响应: ",
     "networkRequestError": "网络请求错误",
+    "generatedCodeSyntaxError": "生成代码语法错误",
+    "checkBlocksForSpecialChars": "请检查积木中是否有特殊字符（如 < 或引号）。",
     "programEndingRestCommand": "程序结束，自动发送休息指令...",
     "restCommandFailed": "发送休息指令失败: ",
 
@@ -827,6 +829,8 @@ const TRANSLATIONS = {
     "asyncSendingCommand": "Async sending command: ",
     "asyncReceivedResponse": "Async received response: ",
     "networkRequestError": "Network request error",
+    "generatedCodeSyntaxError": "Generated code syntax error",
+    "checkBlocksForSpecialChars": "Check blocks for special characters (e.g. < or quotes).",
     "programEndingRestCommand": "Program ended, sending rest command...",
     "restCommandFailed": "Failed to send rest command: ",
 
@@ -1377,6 +1381,8 @@ const TRANSLATIONS = {
     "asyncSendingCommand": "非同期コマンド送信中: ",
     "asyncReceivedResponse": "非同期レスポンス受信: ",
     "networkRequestError": "ネットワークリクエストエラー",
+    "generatedCodeSyntaxError": "生成コードの構文エラー",
+    "checkBlocksForSpecialChars": "ブロックに特殊文字（< や引用符など）が含まれていないか確認してください。",
     "programEndingRestCommand": "プログラム終了、休息コマンドを送信中...",
     "restCommandFailed": "休息コマンドの送信に失敗しました: ",
 

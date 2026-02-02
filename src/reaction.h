@@ -349,7 +349,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       autoSwitch = RANDOM_MIND;
       initialBoot = false;
     }
-
 #ifdef PWM_LED_PIN
     if (autoLedQ)
       digitalWrite(PWM_LED_PIN, HIGH);
@@ -374,9 +373,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       gyroBalanceQ = true;  // This is the default state for this "Q" boolean with all tokens except (T_SERVO_CALIBRATE
                             // && when lastToken is one of the listed values)
       printToAllPorts('G');
-    }
-    else {
-      gyroBalanceQ = gyroBalanceQlag;  // Restore gyroBalanceQ before returning
     }
     if (token != T_PAUSE && !tStep) {
       tStep = 1;
@@ -508,7 +504,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         {
           gyroBalanceQ = !gyroBalanceQ;
           token = gyroBalanceQ ? 'G' : 'g'; // G for activated gyro
-          gyroBalanceQlag = gyroBalanceQ;
           resetAdjust();
         }
         else
@@ -581,7 +576,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 gyroBalanceQ = (newCmd[i] == C_GYRO_BALANCE); // if newCmd[i] == T_GYRO_FINENESS, gyroBalanceQ is true. else is false.
                 if (!gyroBalanceQ) {
                   gyroBalanceQ = false;
-                  gyroBalanceQlag = gyroBalanceQ;
                   printToAllPorts('g');
                   resetAdjust();
                 }
@@ -1211,12 +1205,20 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 }
 
                 if (gesturePrintQ == 1) {
-                  // int readGesture = read_gesture();
+                  // 在返回手势值之前，先调用 read_gesture() 更新手势值
+                  // 这对于WiFi模式尤其重要，因为 read_gesture() 是异步执行的
+                  // 如果不先更新，可能会返回旧的或已清除的手势值
+                  read_gesture();
                   printToAllPorts('=');
                   printToAllPorts(gestureGetValue);
                   lastGesture = gestureGetValue;
                   gestureGetValue=GESTURE_NONE;
                   gesturePrintQ = 0;  // if the command is XGp, the gesture will print the detected result only once
+#ifdef WEB_SERVER
+                  // WiFi 模式下立即完成 Web 任务，只返回 "=\r\n<value>\r\n"，
+                  // 避免后续 printToAllPorts(token) 把 'X' 追加到 webResponse 导致前端解析错误
+                  finishWebCommand();
+#endif
                 }
                 break;
               }

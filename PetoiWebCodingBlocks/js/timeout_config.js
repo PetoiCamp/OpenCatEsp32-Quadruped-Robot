@@ -6,7 +6,7 @@
 const TIMEOUT_CONFIG = {
     // WebSocket 连接相关超时 (毫秒)
     WEBSOCKET: {
-        CONNECTION_TIMEOUT: 10000,      // WebSocket连接超时：10秒
+        CONNECTION_TIMEOUT: 15000,      // WebSocket连接超时：15秒（设备/网络慢时可适当延长）
         HEARTBEAT_INTERVAL: 5000,       // 心跳发送间隔：5秒
         HEARTBEAT_TIMEOUT: 20000,       // 心跳响应超时：20秒
         HEALTH_CHECK_INTERVAL: 10000,   // 连接健康检查间隔：10秒

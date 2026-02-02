@@ -24,26 +24,60 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     // WiFi模式和串口模式都等待命令完成
+    // 非阻塞优化：用“冷却时间”代替 sleep，避免动作延时阻塞手势轮询
+    // 关键修复：加入“全局动作锁”，避免不同动作互相打断（串口手势更实时时尤为明显）
+    // - 任意 gait/posture 动作触发后，在 lock 时间内跳过其它动作发送
+    const cooldownKey = `gait:${cmd}`;
     let code = wrapAsyncOperation(`
+      const __now = Date.now();
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        // 串口等待：记录发送前缓冲区长度，避免命中旧 token
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+        // 全局动作锁：防止其它动作打断当前动作
+        // 串口/手势循环下：若正忙则等待至空闲后再发送，避免丢弃本次指令
+        const __busyUntil = window.__motionBusyUntil || 0;
+        if (__now < __busyUntil) {
+          const __waitUntil = __busyUntil;
+          const __maxWait = 20000;
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
+        const __until = window.__commandCooldowns[${JSON.stringify(cooldownKey)}] || 0;
+        if (__now < __until) {
+          const __waitUntil = __until;
+          const __maxWait = 20000;
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
+      }
       const result = await webRequest("${cmd}", 20000, true);
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__commandCooldowns[${JSON.stringify(cooldownKey)}] = __now + ${delayMs};
+        // 设置全局动作锁（对所有 gait/posture 生效）
+        window.__motionBusyUntil = __now + ${delayMs};
+        window.__motionBusyCmd = ${JSON.stringify(cooldownKey)};
+      }
     `) + '\n';
     // 串口模式时等待完成信号：gait 指令一般以 'k' 作为完成标记
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', 20000); }\n`;
-    if (delayMs > 0) {
-        // 对于长时间延时，分段检查停止标志
-        if (delayMs > 100) {
-            code += `await (async () => {
-  const checkInterval = 100; // 每100ms检查一次
-  const totalChecks = Math.ceil(${delayMs} / checkInterval);
-  for (let i = 0; i < totalChecks; i++) {
-    checkStopExecution();
-    await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, ${delayMs} - i * checkInterval)));
-  }
-})();\n`;
-        } else {
-            code += `checkStopExecution();\nawait new Promise(resolve => setTimeout(resolve, ${delayMs}));\n`;
-        }
-    }
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine('k', 20000, __from);
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
+    // 注意：delay 已由冷却时间实现，不再 sleep 阻塞
     return code;
 };
 
@@ -51,29 +85,116 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
 Blockly.JavaScript.forBlock["posture"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
-    const delayMs = Math.round(delay * 1000);
+    // 默认 delay 改为 0.2s（如果未设置或为 0，使用默认值）
+    const delayMs = (delay && delay > 0) ? Math.round(delay * 1000) : 200;
     
     // WiFi模式和串口模式都等待命令完成
+    // 智能延迟优化：
+    // - 记录命令发送时间
+    // - 等待 "k" 返回（串口）或 webRequest 完成（WiFi）
+    // - 如果 delay < 实际耗时：收到 "k" 后立即执行下一条
+    // - 如果 delay >= 实际耗时：等待到 delay 时间后再执行下一条
+    // - 设置冷却时间为 max(delay, 实际耗时)，避免动作被打断
+    const cooldownKey = `posture:${cmd}`;
     let code = wrapAsyncOperation(`
+      const __cmdStart = Date.now();
+      // 保存到 window 对象，供后续智能延迟逻辑使用
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__lastCmdStart = __cmdStart;
+        // 串口等待：记录发送前缓冲区长度，避免命中旧 token
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+        // 全局动作锁：防止其它动作打断当前动作
+        // 串口模式下动作耗时长（如 khi 约 5s），若直接 return 会丢弃后续手势；改为等待至空闲后再发送
+        const __busyUntil = window.__motionBusyUntil || 0;
+        if (__cmdStart < __busyUntil) {
+          const __waitUntil = __busyUntil;
+          const __maxWait = 15000;
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
+        const __until = window.__commandCooldowns[${JSON.stringify(cooldownKey)}] || 0;
+        if (__cmdStart < __until) {
+          const __waitUntil = __until;
+          const __maxWait = 15000;
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
+      }
       const result = await webRequest("${cmd}", 10000, true);
+      // WiFi模式：webRequest 完成时记录时间（动作可能还在执行，但命令已发送）
+      let __kReceivedAt = Date.now();
+      if (typeof window !== 'undefined') {
+        window.__lastKReceivedAt = __kReceivedAt;
+      }
     `) + '\n';
     // 串口模式时等待完成信号：'k...' 返回 'k'；'d'（rest）返回 'd'
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, 15000); }\n`;
-    if (delayMs > 0) {
-        // 对于长时间延时，分段检查停止标志
-        if (delayMs > 100) {
-            code += `await (async () => {
-  const checkInterval = 100; // 每100ms检查一次
-  const totalChecks = Math.ceil(${delayMs} / checkInterval);
-  for (let i = 0; i < totalChecks; i++) {
-    checkStopExecution();
-    await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, ${delayMs} - i * checkInterval)));
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
+  const _tok = '${cmd}'.charAt(0); 
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine(_tok, 15000, __from);
+  // 串口模式：记录收到 "k" 的时间（动作完成）
+  if (typeof window !== 'undefined') {
+    window.__lastKReceivedAt = Date.now();
+    window.__lastSerialStartIndex = null;
   }
-})();\n`;
-        } else {
-            code += `checkStopExecution();\nawait new Promise(resolve => setTimeout(resolve, ${delayMs}));\n`;
+}
+`;
+    // 智能延迟：比较 delay 和实际耗时
+    code += wrapAsyncOperation(`
+      const __now = Date.now();
+      // 从 window 对象获取命令开始时间（解决作用域问题）
+      const __cmdStart = (typeof window !== 'undefined' && window.__lastCmdStart) 
+        ? window.__lastCmdStart 
+        : __now;
+      // 计算实际耗时（从发送命令到收到 "k" 或 webRequest 完成）
+      // 串口模式：__lastKReceivedAt 是收到 "k" 的时间（动作完成）
+      // WiFi模式：__lastKReceivedAt 是 webRequest 完成的时间（命令已发送，动作可能还在执行）
+      const __actualDuration = (typeof window !== 'undefined' && window.__lastKReceivedAt) 
+        ? (window.__lastKReceivedAt - __cmdStart)
+        : (__now - __cmdStart);
+      // 如果 delay < 实际耗时：已在收到 "k" 时完成，无需额外等待
+      // 如果 delay >= 实际耗时：等待剩余时间
+      const __remainingDelay = ${delayMs} - __actualDuration;
+      if (__remainingDelay > 0) {
+        // 分段等待，每 100ms 检查一次停止标志
+        const __checkInterval = 100;
+        const __totalChecks = Math.ceil(__remainingDelay / __checkInterval);
+        for (let __i = 0; __i < __totalChecks; __i++) {
+          checkStopExecution();
+          const __waitTime = Math.min(__checkInterval, __remainingDelay - __i * __checkInterval);
+          if (__waitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, __waitTime));
+          }
         }
-    }
+      }
+      // 设置冷却时间：动作进行中由 waitForSerialTokenLine 保证不打断；完成后只需短时缓冲
+      // 串口下 actualDuration 可能很长（如 khi 5s），若全量作为冷却会导致“识别到手势后等很久才执行”
+      // 故对“完成后冷却”设上限（如 600ms），既防连发又保证下一手势尽快执行
+      const __postCompleteCapMs = 600;
+      const __finalCooldown = Math.max(${delayMs}, Math.min(__actualDuration, __postCompleteCapMs));
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__commandCooldowns[${JSON.stringify(cooldownKey)}] = __now + __finalCooldown;
+        // 设置全局动作锁（对所有 gait/posture 生效）
+        window.__motionBusyUntil = __now + __finalCooldown;
+        window.__motionBusyCmd = ${JSON.stringify(cooldownKey)};
+        // 清理临时变量
+        window.__lastKReceivedAt = null;
+        window.__lastCmdStart = null;
+      }
+    `) + '\n';
     return code;
 };
 
@@ -103,6 +224,13 @@ Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
     // 使用字节数组格式，但添加更好的错误处理
     const command = `bytes:[${toneArray.join(',')}]`;
     let code = wrapAsyncOperation(`
+        // 串口等待：记录发送前缓冲区长度，避免命中旧 token
+        if (typeof window !== 'undefined') {
+          const __sb = (typeof serialBuffer === 'string')
+            ? serialBuffer
+            : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+          window.__lastSerialStartIndex = __sb.length;
+        }
         try {
             const result = await webRequest("${command}", 15000, true);
         } catch (error) {
@@ -112,7 +240,11 @@ Blockly.JavaScript.forBlock["play_tone_list"] = function (block) {
         }
     `) + '\n';
     // 串口模式：等到串口回 'B'（音调列表完成）后，再开始计时延时
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', 15000); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine('B', 15000, __from);
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
     
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
@@ -149,9 +281,21 @@ Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if (typeof window !== 'undefined') {
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+      }
+      const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);
+    `) + '\n';
     // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}, __from);
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -219,9 +363,25 @@ Blockly.JavaScript.forBlock["send_custom_command"] = function (block) {
     );
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if (typeof window !== 'undefined') {
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+      }
+      const result = await webRequest(${command}, ${LONG_COMMAND_TIMEOUT}, true);
+    `) + '\n';
     // 若自定义命令是 'm'/'k'/'d' 开头，串口模式下等待对应完成标记；否则跳过
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { try { const _c = ${command}; const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; if (_t && ('mkd'.includes(_t))) { await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}); } } catch(e) {} }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { try { 
+  const _c = ${command}; 
+  const _t = (typeof _c === 'string' && _c.length>0) ? _c[0] : null; 
+  if (_t && ('mkd'.includes(_t))) { 
+    const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+    await waitForSerialTokenLine(_t, ${LONG_COMMAND_TIMEOUT}, __from); 
+  } 
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+} catch(e) {} }\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -289,9 +449,21 @@ Blockly.JavaScript.forBlock["play_melody"] = function (block) {
     
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.ceil(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}");`) + '\n';
+    let code = wrapAsyncOperation(`
+      if (typeof window !== 'undefined') {
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+      }
+      const result = await webRequest("${encodeCmd}", ${LONG_COMMAND_TIMEOUT}, true, "${displayCmd}");
+    `) + '\n';
     // 串口模式：等到串口回 'B'（旋律完成）后，再开始计时延时
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine('B', ${LONG_COMMAND_TIMEOUT}, __from); 
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -323,10 +495,11 @@ javascript.javascriptGenerator.forBlock["set_joints_angle_seq"] = function (
     let code = `
 checkStopExecution();
 await (async function() {
+  const __from = (typeof serialBuffer === 'string') ? serialBuffer.length : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
   if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
-    await waitForSerialTokenLine('m', 15000);
+    await waitForSerialTokenLine('m', 15000, __from);
   }
   return true;
 })()
@@ -363,10 +536,11 @@ javascript.javascriptGenerator.forBlock["set_joints_angle_sim"] = function (
     let code = `
 checkStopExecution();
 await (async function() {
+  const __from = (typeof serialBuffer === 'string') ? serialBuffer.length : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
   if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
-    await waitForSerialTokenLine('i', 30000);
+    await waitForSerialTokenLine('i', 30000, __from);
   }
   return true;
 })()
@@ -453,10 +627,11 @@ javascript.javascriptGenerator.forBlock["set_joint_angle"] = function (block) {
     let code = `
 checkStopExecution();
 await (async function() {
+  const __from = (typeof serialBuffer === 'string') ? serialBuffer.length : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
   const command = await encodeMoveCommand("${token}", ${variableText});
   await webRequest(command, ${COMMAND_TIMEOUT_MAX}, true);
   if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
-    await waitForSerialTokenLine('m', 15000);
+    await waitForSerialTokenLine('m', 15000, __from);
   }
   return true;
 })()
@@ -539,9 +714,22 @@ javascript.javascriptGenerator.forBlock["arm_action"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if (typeof window !== 'undefined') {
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+      }
+      const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);
+    `) + '\n';
     // 机械臂动作通常是技能类（k开头），串口模式下等待'k'完成标记
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { const _tok = '${cmd}'.charAt(0); await waitForSerialTokenLine(_tok, ${LONG_COMMAND_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
+  const _tok = '${cmd}'.charAt(0); 
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine(_tok, ${LONG_COMMAND_TIMEOUT}, __from); 
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
     if (delayMs > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delayMs > 100) {
@@ -577,9 +765,21 @@ javascript.javascriptGenerator.forBlock["action_skill_file"] = function (
     const token = skillContent.token;
     const list = skillContent.data.flat();
     const cmd = encodeCommand(token, list);
-    let code = wrapAsyncOperation(`const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);`) + '\n';
+    let code = wrapAsyncOperation(`
+      if (typeof window !== 'undefined') {
+        const __sb = (typeof serialBuffer === 'string')
+          ? serialBuffer
+          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
+        window.__lastSerialStartIndex = __sb.length;
+      }
+      const result = await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);
+    `) + '\n';
     // 串口模式：根据技能文件的token类型等待对应完成标记
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { await waitForSerialTokenLine('${token}', ${LONG_COMMAND_TIMEOUT}); }\n`;
+    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
+  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
+  await waitForSerialTokenLine('${token}', ${LONG_COMMAND_TIMEOUT}, __from); 
+  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
+}\n`;
     if (delay > 0) {
         // 对于长时间延时，分段检查停止标志
         if (delay > 100) {
@@ -607,6 +807,7 @@ try {
   if(connectionResult) {
     deviceIP = "${ip}";
     console.log(getText("connectedToDevice") + deviceIP);
+    window.__gesturePollIntervalMs = 600;
   } else {
     console.log(getText("debugConnectionFailed"));
   }
@@ -802,44 +1003,129 @@ Blockly.JavaScript.forBlock["get_gesture_value"] = function (block) {
     let code = `
 await (async function() {
   checkStopExecution();
-  // 首次进入手势模式
+  // 首次进入手势模式（WiFi 下设备可能响应慢或格式不同，失败不中断任务，仍标记已尝试并继续轮询 XGp）
   if (typeof window === 'undefined' || !window.__gestureActivated) {
-    await webRequest("XGr", 5000, true);
+    try {
+      // 分两步：先禁用固件自动反应，再启用手势传感器
+      await webRequest("XGr", 5000, true);
+      // 等待固件设置生效
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.warn) console.warn('XGr (gesture enable) failed, continuing with XGp poll:', e && e.message ? e.message : e);
+    }
     if (typeof window !== 'undefined') window.__gestureActivated = true;
   }
   checkStopExecution();
-  
+
   // 每次都发送单次查询命令 XGp（小写p），获取当前手势值
-  // 清空一小部分缓冲区尾部，为新数据腾出空间
-  if (typeof serialBuffer !== 'undefined' && serialBuffer.length > 5000) {
-    serialBuffer = serialBuffer.substring(serialBuffer.length - 3000);
-  } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string' && window.serialBuffer.length > 5000) {
-    window.serialBuffer = window.serialBuffer.substring(window.serialBuffer.length - 3000);
+  // 注意：WiFi(WebSocket)模式下，手势值会直接作为 webRequest 返回字符串返回；
+  // 串口模式下，也可能返回完整响应或占位文本，此时再回退到 serialBuffer 解析。
+  //
+  // 性能优化（WiFi模式尤其重要）：
+  // - 鑺傛祦锛氶粯璁?500ms锛圵iFi 妯″紡闇€杈冮暱闂撮殧閬垮厤闃熷垪绉帇锛夛紱鑺傛祦鏈熼棿绛夊緟骞惰繑鍥?-1锛岄伩鍏嶉噸澶嶄娇鐢ㄧ紦瀛樻墜鍔縗n  // - 瓒呮椂锛歑Gp 缁熶竴 800ms锛堢粰璁惧瓒冲鐨勫鐞嗘椂闂达級
+  // - 鍗曢淇濇姢锛氬悓涓€鏃跺埢鍙厑璁镐竴涓?XGp 鍦ㄩ€旓紝淇濇姢鏈熼棿绛夊緟 100ms 鍚庤繑鍥?-1
+  // - 鍔ㄤ綔閿侊細鍔ㄤ綔鎵ц鏈熼棿绛夊緟 100ms 鍚庤繑鍥?-1锛岄伩鍏嶅悓涓€鎵嬪娍閲嶅瑙﹀彂
+  if (typeof window !== 'undefined') {
+    const __now = Date.now();
+    
+    // 动作执行期间，等待一小段时间后返回 -1（避免同一手势重复触发，同时避免循环空转）
+    // WiFi 模式下，XGp 超时不代表动作完成，不能长时间等待 __motionBusyUntil，否则会导致任务队列积压和断连
+    // 改为每次等待 100ms，让设备端有时间处理命令，同时避免循环瞬间跑完
+    const __busyUntil = window.__motionBusyUntil || 0;
+    if (__now < __busyUntil) {
+      await new Promise(r => setTimeout(r, 100));
+      return -1;
+    }
+    
+    const __minInterval = (typeof window.__gesturePollIntervalMs === 'number')
+      ? window.__gesturePollIntervalMs
+      : 500;
+    if (typeof window.__lastGesturePollTs !== 'number') {
+      window.__lastGesturePollTs = 0;
+    }
+    if (__now - window.__lastGesturePollTs < __minInterval) {
+      // 节流期间：等待剩余时间，然后返回 -1（避免重复使用缓存的手势值）
+      const __waitTime = __minInterval - (__now - window.__lastGesturePollTs);
+      if (__waitTime > 0 && __waitTime < 10000) {
+        await new Promise(r => setTimeout(r, __waitTime));
+      }
+      return -1;
+    }
+    if (window.__gesturePollInFlight) {
+      // 单飞保护：等待 100ms 后返回 -1
+      await new Promise(r => setTimeout(r, 100));
+      return -1;
+    }
+    window.__gesturePollInFlight = true;
+    window.__lastGesturePollTs = __now;
   }
-  
-  // 记录发送前的缓冲区长度
-  const bufLenBefore = (typeof serialBuffer !== 'undefined') ? serialBuffer.length : 
-                       (typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : 0;
-  
-  // 发送单次查询命令
-  await webRequest("XGp", 1000, true);
-  
-  // 等待响应数据到达（最多等待500ms）
-  await new Promise(r => setTimeout(r, 200));
-  
-  // 解析返回的手势值
+
+  let rawGesture = null;
+  const __xgpTimeout = 1000;
+  try {
+    rawGesture = await webRequest("XGp", __xgpTimeout, true);
+  } catch (e) {
+    // 关键：XGp 偶发超时/断连时不要让程序整体中断，
+    // 只把这次读数当作“无手势”，让循环继续，后续 exit_gesture_mode 才有机会执行。
+    rawGesture = null;
+  } finally {
+    if (typeof window !== 'undefined') {
+      window.__gesturePollInFlight = false;
+    }
+  }
+
+  // 解析返回的手势值（优先解析 rawGesture；必要时回退到缓冲区解析）
   let gestureValue = -1;
   try {
-    if (typeof getLatestGestureNoWait === 'function') {
-      const result = getLatestGestureNoWait();
-      if (result && result.value !== null && result.value !== undefined) {
-        gestureValue = result.value;
+    // WiFi 下若注入的 webRequest 未展开数组，此处做兼容：单元素数组取首元素
+    if (Array.isArray(rawGesture) && rawGesture.length > 0) {
+      rawGesture = rawGesture[0];
+    }
+    // 1) 优先：从 webRequest 的返回值解析（WiFi模式必走这里）
+    if (typeof rawGesture === 'number') {
+      gestureValue = rawGesture;
+    } else if (typeof rawGesture === 'string' && rawGesture.length > 0) {
+      // parseSingleResult 会从字符串中提取首个可解析数字（WiFi 下设备返回 "=\\r\\n数字\\r\\n" 格式）
+      if (typeof parseSingleResult === 'function') {
+        gestureValue = parseSingleResult(rawGesture);
+      } else {
+        // 这里用 \\d，避免某些拼接/转义流程把 \d 吃掉导致正则失效
+        const m = String(rawGesture).match(/-?\\d+/);
+        gestureValue = m ? parseInt(m[0], 10) : -1;
+      }
+    }
+
+    // 2) 回退：仅串口模式从缓冲区取最新一帧；WiFi 无缓冲区，不等待 200ms 以保持实时性
+    const __hasSerialBuffer = (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string') || (typeof window !== 'undefined' && typeof window.serialBuffer === 'string');
+    if (![0, 1, 2, 3].includes(gestureValue) && __hasSerialBuffer) {
+      if (typeof serialBuffer !== 'undefined' && typeof serialBuffer === 'string' && serialBuffer.length > 5000) {
+        serialBuffer = serialBuffer.substring(serialBuffer.length - 3000);
+      } else if (typeof window !== 'undefined' && typeof window.serialBuffer === 'string' && window.serialBuffer.length > 5000) {
+        window.serialBuffer = window.serialBuffer.substring(window.serialBuffer.length - 3000);
+      }
+      await new Promise(r => setTimeout(r, 200));
+      if (typeof getLatestGestureNoWait === 'function') {
+        const result = getLatestGestureNoWait();
+        if (result && result.value !== null && result.value !== undefined) {
+          gestureValue = result.value;
+        }
       }
     }
   } catch (e) {
     gestureValue = -1;
   }
-  
+
+  // 只接受 0/1/2/3，其它一律视为无手势
+  if (![0, 1, 2, 3].includes(gestureValue)) {
+    gestureValue = -1;
+  }
+
+  // 缓存上一帧（让WiFi下“跳过轮询”时也能有值可用）
+  if (typeof window !== 'undefined') {
+    window.__lastGestureValue = gestureValue;
+    window.__lastGestureValueTs = Date.now();
+  }
+
   // 返回手势值（0=上, 1=下, 2=左, 3=右, -1=无手势）
   return gestureValue;
 })()
@@ -927,7 +1213,9 @@ await (async function() {
     
     // 重置初始化标志，以便下次可以重新初始化
     if (typeof window !== 'undefined') {
-      window.__gestureInitialized = false;
+      // 统一使用 __gestureActivated（get_gesture_value 里用的就是它）
+      window.__gestureActivated = false;
+      window.__lastGestureFrameKey = '';
     }
   } catch (error) {
     console.error('退出手势识别模式失败:', error);
@@ -1006,12 +1294,12 @@ function parseSingleResult(rawResult) {
         return rawResult;
     }
     
-    // 首先尝试提取=号后的数字
+    // 首先尝试提取=号后的数字（支持设备返回 "=\r\n数字\r\n" 或 "=\n数字\n" 等格式）
     if (typeof rawResult === 'string' && rawResult.includes("=")) {
-        const lines = rawResult.split("\\\\n");
+        const lines = rawResult.split(/\r?\n/).map(function (s) { return s.trim(); });
         for (let i = 0; i < lines.length; i++) {
-            if (lines[i] && lines[i].trim() === "=" && i + 1 < lines.length) {
-                const num = parseInt(lines[i + 1].trim());
+            if (lines[i] === "=" && i + 1 < lines.length) {
+                const num = parseInt(lines[i + 1], 10);
                 if (!isNaN(num)) {
                     return num;
                 }
@@ -1047,8 +1335,8 @@ function parseCameraCoordinateResult(rawResult) {
         const lines = norm.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
         // 优先匹配新格式块：
-        // =\n<coords line>\nX
-        // 其中 <coords line> 形如 "-65.00 -2.00 size = 97 138"
+        // =\n坐标行\nX
+        // 其中坐标行形如 "-65.00 -2.00 size = 97 138"
         // 取最后一帧匹配（避免切片里有多帧时总拿到旧帧）
         const blockRegex = /=\s*\n([^\n]+)\nX/gi;
         let blockMatch = null;

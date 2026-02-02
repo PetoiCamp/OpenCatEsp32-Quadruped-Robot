@@ -185,12 +185,15 @@ class PetoiAsyncClient
                 // 设置连接超时
                 const connectionTimeout = setTimeout(() => {
                     if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-                        // 只在调试模式下显示连接超时信息
+                        const host = (this.baseUrl || '').replace(/^wss?:\/\//, '').split(':')[0] || '';
+                        const msg = (typeof getText === 'function' && getText('connectionTimeout'))
+                            ? getText('connectionTimeout').replace('{ip}', host || 'device')
+                            : ('Connection timeout: ' + (host ? host : 'device'));
                         if (typeof showDebug !== 'undefined' && showDebug) {
-                            console.log('Connection timeout');
+                            console.log(msg);
                         }
                         this.ws.close();
-                        reject(new Error('Connection timeout'));
+                        reject(new Error(msg));
                     }
                 }, this.connectionTimeout);
 
@@ -325,11 +328,11 @@ class PetoiAsyncClient
     handleMessage(data)
     {
         try {
-            // 只在调试模式下显示消息处理信息
+            // 只在调试模式下显示消息处理信息（try 避免 addConsoleMessage 抛错导致后续 resolve 不执行）
             if (typeof showDebug !== 'undefined' && showDebug) {
-                console.log('handleMessage', data);
+                try { console.log('handleMessage', data); } catch (e) {}
             }
-            
+
             // 检查data是否为null或undefined
             if (!data) {
                 if (typeof showDebug !== 'undefined' && showDebug) {
@@ -337,58 +340,31 @@ class PetoiAsyncClient
                 }
                 return;
             }
-            
-            // 清理数据中的特殊字符
-            const cleanData = data.replace(/[\r\n\t\f\v]/g, ' ').trim();
-            const message = JSON.parse(cleanData);
-            
-            // 只在调试模式下显示消息类型
-            if (typeof showDebug !== 'undefined' && showDebug) {
-                console.log('message type', message.type);
+            // 若收到的是 HTML（如 404 页、错误页），不要按 JSON 解析，避免 "Unexpected token '<'" 导致弹窗
+            const cleanData = typeof data === 'string' ? data.replace(/[\r\n\t\f\v]/g, ' ').trim() : String(data);
+            if (cleanData.startsWith('<')) {
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    console.warn('Received non-JSON response (likely HTML), ignoring:', cleanData.substring(0, 80));
+                }
+                return;
             }
-            
+            let message;
+            try {
+                message = JSON.parse(cleanData);
+            } catch (parseError) {
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    console.error(getText('messageProcessingError'), parseError);
+                    console.error(getText('rawData'), cleanData.substring(0, 200));
+                }
+                return;
+            }
+
             // 更新最后活动时间
             this.lastActivityTime = Date.now();
-            
-            // 处理心跳响应
-            if (message.type === 'heartbeat') {
-                const now = Date.now();
-                const latency = now - this.lastHeartbeatTime;
-                
-                // 只在调试模式下显示心跳信息
-                if (typeof showDebug !== 'undefined' && showDebug) {
-                    console.log(getText('heartbeatResponse').replace('{latency}', latency));
-                }
-                
-                if (this.heartbeatTimeout) {
-                    clearTimeout(this.heartbeatTimeout);
-                    this.heartbeatTimeout = null;
-                }
-                return;
-            }
 
-            // 处理连接成功响应
-            if (message.type === 'connected') {
-                // 只在调试模式下显示连接确认信息
-                if (typeof showDebug !== 'undefined' && showDebug) {
-                    console.log(getText('connectionConfirmed'));
-                }
-                return;
-            }
-
-            // 处理错误消息
-            if (message.error) {
-                console.error(getText('serverError'), message.error);
-                this.eventTarget.dispatchEvent(new CustomEvent('serverError', {
-                    detail: { error: message.error }
-                }));
-                return;
-            }
-
-            // 处理任务相关消息
+            // 先处理任务响应并 resolve/reject，再打调试日志，避免 Debug Info 下 addConsoleMessage 抛错或阻塞导致 Promise 永不 resolve、手势无法识别
             if (message.taskId && this.pendingTasks.has(message.taskId)) {
                 const task = this.pendingTasks.get(message.taskId);
-                
                 switch (message.status) {
                     case 'running':
                         task.onProgress && task.onProgress(message);
@@ -406,6 +382,45 @@ class PetoiAsyncClient
                         this.pendingTasks.delete(message.taskId);
                         break;
                 }
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    try { console.log('message type', message.type); } catch (e) {}
+                }
+                return;
+            }
+
+            // 只在调试模式下显示消息类型（非任务消息）
+            if (typeof showDebug !== 'undefined' && showDebug) {
+                try { console.log('message type', message.type); } catch (e) {}
+            }
+
+            // 处理心跳响应
+            if (message.type === 'heartbeat') {
+                const now = Date.now();
+                const latency = now - this.lastHeartbeatTime;
+                if (this.heartbeatTimeout) {
+                    clearTimeout(this.heartbeatTimeout);
+                    this.heartbeatTimeout = null;
+                }
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    try { console.log(getText('heartbeatResponse').replace('{latency}', latency)); } catch (e) {}
+                }
+                return;
+            }
+
+            // 处理连接成功响应
+            if (message.type === 'connected') {
+                if (typeof showDebug !== 'undefined' && showDebug) {
+                    try { console.log(getText('connectionConfirmed')); } catch (e) {}
+                }
+                return;
+            }
+
+            // 处理错误消息
+            if (message.error) {
+                console.error(getText('serverError'), message.error);
+                this.eventTarget.dispatchEvent(new CustomEvent('serverError', {
+                    detail: { error: message.error }
+                }));
                 return;
             }
 
