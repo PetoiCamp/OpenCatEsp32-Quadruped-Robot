@@ -145,18 +145,17 @@
       return `[${hours}:${minutes}:${seconds}.${milliseconds}]`;
     }
 
+    // 全局版本日期变量（格式：v年.月.日）
+    const GLOBAL_VERSION_DATE = "v2026.02.03";
+
     // 设置版本日期
     function setVersionDate()
     {
       const versionElement = document.getElementById('versionDate');
       if (versionElement)
       {
-        // 使用当前日期作为版本日期
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        versionElement.textContent = `v${year}.${month}.${day}`;
+        // 使用全局版本日期变量
+        versionElement.textContent = GLOBAL_VERSION_DATE;
       }
     }
 
@@ -1870,7 +1869,7 @@ async function closeConnection() {
       code = escapeScriptTag(code);
       connectionFunctions = escapeScriptTag(connectionFunctions);
       const runCodePrefix = "function asyncLog(message) {\n  return new Promise((resolve) => {\n    console.log(message);\n    setTimeout(resolve, 0);\n  });\n}\n\nfunction checkStopExecution() {\n  if (stopExecution) {\n    throw new Error(getText(\"programExecutionStoppedByUser\"));\n  }\n}\n\nfunction checkStopExecutionInLoop() {\n  if (stopExecution) {\n    throw new Error(getText(\"programExecutionStoppedByUser\"));\n  }\n  return new Promise(resolve => setTimeout(resolve, 0));\n}\n\n" + connectionFunctions + "\n\n(async function () {\n  try {\n    checkStopExecution();\n\n";
-      const runCodeSuffix = "\n    checkStopExecution();\n    await asyncLog(getText(\"programEndingRestCommand\"));\n    " + restCommand + "\n  } catch (e) {\n    if (e.message === \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n      await asyncLog(getText(\"programExecutionStopped\"));\n      try {\n        await asyncLog(getText(\"programEndingRestCommand\"));\n        " + (hasValidSerial ? 'await serialRequest("d", 5000, true, null, true);' : 'await webRequest("d", 5000, true, null, true);') + "\n        if (showDebug) console.log(\"Rest command sent successfully\");\n      } catch (restError) {\n        console.error(getText(\"restCommandFailed\") + restError.message);\n      }\n    } else {\n      console.error(getText(\"programExecutionError\") + \":\", e.message);\n      console.error(getText(\"restCommandFailed\") + e.message);\n    }\n  }\n  " + closeConnectionCall + "\n  console.log(getText(\"taskEnded\"));\n})().catch((e) => {\n  if (e.message !== \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n    console.error(getText(\"networkRequestError\") + \": \" + e.message);\n    alert(getText(\"networkRequestError\") + \": \" + e.message);\n  }\n}).finally(() => {\n  if (showDebug) console.log(getText(\"programExecutionCompletedResetState\"));\n  isProgramRunning = false;\n  stopExecution = false;\n  var stopBtn = document.getElementById('stopCodeBtn');\n  if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.style.backgroundColor = ''; stopBtn.style.color = ''; }\n  var runBtn = document.querySelector('button[onclick=\"runCode()\"]');\n  if (runBtn) runBtn.style.display = 'inline-block';\n  if (typeof clearConsoleInput === 'function') clearConsoleInput();\n  if (showDebug) console.log(getText(\"programExecutionCompleted\"));\n});\n";
+      const runCodeSuffix = "\n    checkStopExecution();\n    // 等待最后一个动作的冷却时间结束\n    if (typeof window !== 'undefined' && window.__motionBusyUntil) {\n      const __now = Date.now();\n      const __remainingCooldown = window.__motionBusyUntil - __now;\n      if (__remainingCooldown > 0) {\n        if (showDebug) console.log('Waiting for final action cooldown: ' + __remainingCooldown + 'ms');\n        await new Promise(resolve => setTimeout(resolve, __remainingCooldown));\n      }\n    }\n    await asyncLog(getText(\"programEndingRestCommand\"));\n    " + restCommand + "\n  } catch (e) {\n    if (e.message === \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n      await asyncLog(getText(\"programExecutionStopped\"));\n      try {\n        await asyncLog(getText(\"programEndingRestCommand\"));\n        " + (hasValidSerial ? 'await serialRequest("d", 5000, true, null, true);' : 'await webRequest("d", 5000, true, null, true);') + "\n        if (showDebug) console.log(\"Rest command sent successfully\");\n      } catch (restError) {\n        console.error(getText(\"restCommandFailed\") + restError.message);\n      }\n    } else {\n      console.error(getText(\"programExecutionError\") + \":\", e.message);\n      console.error(getText(\"restCommandFailed\") + e.message);\n    }\n  }\n  " + closeConnectionCall + "\n  console.log(getText(\"taskEnded\"));\n})().catch((e) => {\n  if (e.message !== \"\u7a0b\u5e8f\u6267\u884c\u88ab\u7528\u6237\u505c\u6b62\") {\n    console.error(getText(\"networkRequestError\") + \": \" + e.message);\n    alert(getText(\"networkRequestError\") + \": \" + e.message);\n  }\n}).finally(() => {\n  if (showDebug) console.log(getText(\"programExecutionCompletedResetState\"));\n  isProgramRunning = false;\n  stopExecution = false;\n  var stopBtn = document.getElementById('stopCodeBtn');\n  if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.style.backgroundColor = ''; stopBtn.style.color = ''; }\n  var runBtn = document.querySelector('button[onclick=\"runCode()\"]');\n  if (runBtn) runBtn.style.display = 'inline-block';\n  if (typeof clearConsoleInput === 'function') clearConsoleInput();\n  if (showDebug) console.log(getText(\"programExecutionCompleted\"));\n});\n";
       // 对完整拼接结果再转义一次，防止“script 结束标签”字面量混入导致 eval 或解析异常
       let runCodeBlock = escapeScriptTag(runCodePrefix + code + runCodeSuffix);
       // 将智能引号等易导致 Invalid or unexpected token 的字符规范为 ASCII

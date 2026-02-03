@@ -32,6 +32,8 @@ const unsigned long GESTURE_INTERVAL = 30;  // Minimum 0.03 seconds between gest
 void gestureSetup() {
   if (!APDS.begin()) {
     PTLF("Error initializing APDS-9960 sensor!");
+    // 即使初始化失败也继续，但手势检测将不工作
+    return;
   }
   // for setGestureSensitivity(..) a value between 1 and 100 is required.
   // Higher values make the gesture recognition more sensitive but less accurate

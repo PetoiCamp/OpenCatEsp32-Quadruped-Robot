@@ -1214,11 +1214,6 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                   lastGesture = gestureGetValue;
                   gestureGetValue=GESTURE_NONE;
                   gesturePrintQ = 0;  // if the command is XGp, the gesture will print the detected result only once
-#ifdef WEB_SERVER
-                  // WiFi 模式下立即完成 Web 任务，只返回 "=\r\n<value>\r\n"，
-                  // 避免后续 printToAllPorts(token) 把 'X' 追加到 webResponse 导致前端解析错误
-                  finishWebCommand();
-#endif
                 }
                 break;
               }
@@ -1531,7 +1526,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
     }
 
     if (token != T_SKILL || skill->period > 0) {  // it will change the token and affect strcpy(lastCmd, newCmd)
-      printToAllPorts(token);                     // postures, gaits and other tokens can confirm completion by sending the token back
+      // 对于 X 类扩展模块命令（如 XGp, XCp），由各自的处理逻辑负责输出，
+      // 这里不再输出 'X' token，避免 Web 模式下污染 webResponse
+      if (token != T_EXTENSION) {
+        printToAllPorts(token);                     // postures, gaits and other tokens can confirm completion by sending the token back
+      }
       if (lastToken == T_SKILL
           && (lowerToken == T_GYRO || lowerToken == T_INDEXED_SIMULTANEOUS_ASC || lowerToken == T_INDEXED_SEQUENTIAL_ASC
               || lowerToken == T_PAUSE || token == T_JOINTS || token == T_RANDOM_MIND || token == T_BALANCE_SLOPE

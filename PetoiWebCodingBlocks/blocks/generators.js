@@ -24,14 +24,19 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
     // WiFi模式和串口模式都等待命令完成
-    // 非阻塞优化：用“冷却时间”代替 sleep，避免动作延时阻塞手势轮询
-    // 关键修复：加入“全局动作锁”，避免不同动作互相打断（串口手势更实时时尤为明显）
-    // - 任意 gait/posture 动作触发后，在 lock 时间内跳过其它动作发送
+    // 智能延迟优化：
+    // - 记录命令发送时间
+    // - 等待 "k" 返回（串口）或 webRequest 完成（WiFi）
+    // - 如果 delay < 实际耗时：收到 "k" 后立即执行下一条
+    // - 如果 delay >= 实际耗时：等待到 delay 时间后再执行下一条
+    // - 设置冷却时间为 max(delay, 实际耗时)，避免动作被打断
     const cooldownKey = `gait:${cmd}`;
     let code = wrapAsyncOperation(`
-      const __now = Date.now();
+      const __cmdStart = Date.now();
+      // 保存到 window 对象，供后续智能延迟逻辑使用
       if (typeof window !== 'undefined') {
         window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__lastCmdStart = __cmdStart;
         // 串口等待：记录发送前缓冲区长度，避免命中旧 token
         const __sb = (typeof serialBuffer === 'string')
           ? serialBuffer
@@ -40,7 +45,7 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
         // 全局动作锁：防止其它动作打断当前动作
         // 串口/手势循环下：若正忙则等待至空闲后再发送，避免丢弃本次指令
         const __busyUntil = window.__motionBusyUntil || 0;
-        if (__now < __busyUntil) {
+        if (__cmdStart < __busyUntil) {
           const __waitUntil = __busyUntil;
           const __maxWait = 20000;
           const __startWait = Date.now();
@@ -51,7 +56,7 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
           if (Date.now() < __waitUntil) return true;
         }
         const __until = window.__commandCooldowns[${JSON.stringify(cooldownKey)}] || 0;
-        if (__now < __until) {
+        if (__cmdStart < __until) {
           const __waitUntil = __until;
           const __maxWait = 20000;
           const __startWait = Date.now();
@@ -63,21 +68,77 @@ Blockly.JavaScript.forBlock["gait"] = function (block) {
         }
       }
       const result = await webRequest("${cmd}", 20000, true);
-      if (typeof window !== 'undefined') {
-        window.__commandCooldowns = window.__commandCooldowns || {};
-        window.__commandCooldowns[${JSON.stringify(cooldownKey)}] = __now + ${delayMs};
-        // 设置全局动作锁（对所有 gait/posture 生效）
-        window.__motionBusyUntil = __now + ${delayMs};
-        window.__motionBusyCmd = ${JSON.stringify(cooldownKey)};
-      }
+      // WiFi 模式下不设置 __lastKReceivedAt，因为 webRequest 只是发送命令并收到简单响应
+      // 无法知道动作何时完成，所以让延时逻辑使用完整的设定延时时间
+      // 串口模式下会在 waitForSerialTokenLine 之后设置准确的动作完成时间
     `) + '\n';
     // 串口模式时等待完成信号：gait 指令一般以 'k' 作为完成标记
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
   const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
   await waitForSerialTokenLine('k', 20000, __from);
-  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
-}\n`;
-    // 注意：delay 已由冷却时间实现，不再 sleep 阻塞
+  // 串口模式：记录收到 "k" 的时间（动作完成）
+  if (typeof window !== 'undefined') {
+    window.__lastKReceivedAt = Date.now();
+    window.__lastSerialStartIndex = null;
+  }
+}
+`;
+    // 智能延迟：比较 delay 和实际耗时
+    code += wrapAsyncOperation(`
+      const __now = Date.now();
+      // 从 window 对象获取命令开始时间（解决作用域问题）
+      const __cmdStart = (typeof window !== 'undefined' && window.__lastCmdStart) 
+        ? window.__lastCmdStart 
+        : __now;
+      
+      // 计算剩余延时时间
+      // WiFi 模式：无法知道动作何时完成，从命令发送时间开始计算完整延时
+      // 串口模式：知道动作完成时间，智能计算剩余延时
+      let __remainingDelay;
+      let __actualDuration = 0;
+      const __isWiFi = (typeof window !== 'undefined') && window.petoiClient;
+      
+      if (__isWiFi) {
+        // WiFi 模式：目标时间 = 命令发送时间 + 设定延时
+        const __targetTime = __cmdStart + ${delayMs};
+        __remainingDelay = __targetTime - __now;
+        __actualDuration = __now - __cmdStart;  // 用于冷却时间计算
+      } else {
+        // 串口模式：计算实际耗时（从发送命令到收到 "k"）
+        __actualDuration = (typeof window !== 'undefined' && window.__lastKReceivedAt) 
+          ? (window.__lastKReceivedAt - __cmdStart)
+          : (__now - __cmdStart);
+        __remainingDelay = ${delayMs} - __actualDuration;
+      }
+      
+      if (__remainingDelay > 0) {
+        // 分段等待，每 100ms 检查一次停止标志
+        const __checkInterval = 100;
+        const __totalChecks = Math.ceil(__remainingDelay / __checkInterval);
+        for (let __i = 0; __i < __totalChecks; __i++) {
+          checkStopExecution();
+          const __waitTime = Math.min(__checkInterval, __remainingDelay - __i * __checkInterval);
+          if (__waitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, __waitTime));
+          }
+        }
+      }
+      // 设置冷却时间：动作进行中由 waitForSerialTokenLine 保证不打断；完成后只需短时缓冲
+      // 串口下 actualDuration 可能很长（如 khi 5s），若全量作为冷却会导致"识别到手势后等很久才执行"
+      // 故对"完成后冷却"设上限（如 600ms），既防连发又保证下一手势尽快执行
+      const __postCompleteCapMs = 600;
+      const __finalCooldown = Math.max(${delayMs}, Math.min(__actualDuration, __postCompleteCapMs));
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__commandCooldowns[${JSON.stringify(cooldownKey)}] = __now + __finalCooldown;
+        // 设置全局动作锁（对所有 gait/posture 生效）
+        window.__motionBusyUntil = __now + __finalCooldown;
+        window.__motionBusyCmd = ${JSON.stringify(cooldownKey)};
+        // 清理临时变量
+        window.__lastKReceivedAt = null;
+        window.__lastCmdStart = null;
+      }
+    `) + '\n';
     return code;
 };
 
@@ -133,11 +194,9 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
         }
       }
       const result = await webRequest("${cmd}", 10000, true);
-      // WiFi模式：webRequest 完成时记录时间（动作可能还在执行，但命令已发送）
-      let __kReceivedAt = Date.now();
-      if (typeof window !== 'undefined') {
-        window.__lastKReceivedAt = __kReceivedAt;
-      }
+      // WiFi 模式下不设置 __lastKReceivedAt，因为 webRequest 只是发送命令并收到简单响应
+      // 无法知道动作何时完成，所以让延时逻辑使用完整的设定延时时间
+      // 串口模式下会在 waitForSerialTokenLine 之后设置准确的动作完成时间
     `) + '\n';
     // 串口模式时等待完成信号：'k...' 返回 'k'；'d'（rest）返回 'd'
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
@@ -158,15 +217,25 @@ Blockly.JavaScript.forBlock["posture"] = function (block) {
       const __cmdStart = (typeof window !== 'undefined' && window.__lastCmdStart) 
         ? window.__lastCmdStart 
         : __now;
-      // 计算实际耗时（从发送命令到收到 "k" 或 webRequest 完成）
-      // 串口模式：__lastKReceivedAt 是收到 "k" 的时间（动作完成）
-      // WiFi模式：__lastKReceivedAt 是 webRequest 完成的时间（命令已发送，动作可能还在执行）
-      const __actualDuration = (typeof window !== 'undefined' && window.__lastKReceivedAt) 
-        ? (window.__lastKReceivedAt - __cmdStart)
-        : (__now - __cmdStart);
-      // 如果 delay < 实际耗时：已在收到 "k" 时完成，无需额外等待
-      // 如果 delay >= 实际耗时：等待剩余时间
-      const __remainingDelay = ${delayMs} - __actualDuration;
+      // 计算剩余延时时间
+      // WiFi 模式：无法知道动作何时完成，从命令发送时间开始计算完整延时
+      // 串口模式：知道动作完成时间，智能计算剩余延时
+      let __remainingDelay;
+      let __actualDuration = 0;
+      const __isWiFi = (typeof window !== 'undefined') && window.petoiClient;
+      
+      if (__isWiFi) {
+        // WiFi 模式：目标时间 = 命令发送时间 + 设定延时
+        const __targetTime = __cmdStart + ${delayMs};
+        __remainingDelay = __targetTime - __now;
+        __actualDuration = __now - __cmdStart;  // 用于冷却时间计算
+      } else {
+        // 串口模式：计算实际耗时（从发送命令到收到 "k"）
+        __actualDuration = (typeof window !== 'undefined' && window.__lastKReceivedAt) 
+          ? (window.__lastKReceivedAt - __cmdStart)
+          : (__now - __cmdStart);
+        __remainingDelay = ${delayMs} - __actualDuration;
+      }
       if (__remainingDelay > 0) {
         // 分段等待，每 100ms 检查一次停止标志
         const __checkInterval = 100;
@@ -281,36 +350,120 @@ Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
     const delayMs = Math.round(delay * 1000);
+    // WiFi模式和串口模式都等待命令完成
+    // 智能延迟优化：
+    // - 记录命令发送时间
+    // - 等待 "k" 返回（串口）或 webRequest 完成（WiFi）
+    // - 如果 delay < 实际耗时：收到 "k" 后立即执行下一条
+    // - 如果 delay >= 实际耗时：等待到 delay 时间后再执行下一条
+    // - 设置冷却时间为 max(delay, 实际耗时)，避免动作被打断
+    const cooldownKey = `acrobatic:${cmd}`;
     let code = wrapAsyncOperation(`
+      const __cmdStart = Date.now();
+      // 保存到 window 对象，供后续智能延迟逻辑使用
       if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__lastCmdStart = __cmdStart;
+        // 串口等待：记录发送前缓冲区长度，避免命中旧 token
         const __sb = (typeof serialBuffer === 'string')
           ? serialBuffer
           : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
         window.__lastSerialStartIndex = __sb.length;
+        // 全局动作锁：防止其它动作打断当前动作
+        // 串口/手势循环下：若正忙则等待至空闲后再发送，避免丢弃本次指令
+        const __busyUntil = window.__motionBusyUntil || 0;
+        if (__cmdStart < __busyUntil) {
+          const __waitUntil = __busyUntil;
+          const __maxWait = ${ACROBATIC_MOVES_TIMEOUT};
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
+        const __until = window.__commandCooldowns[${JSON.stringify(cooldownKey)}] || 0;
+        if (__cmdStart < __until) {
+          const __waitUntil = __until;
+          const __maxWait = ${ACROBATIC_MOVES_TIMEOUT};
+          const __startWait = Date.now();
+          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
+            checkStopExecution();
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (Date.now() < __waitUntil) return true;
+        }
       }
       const result = await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);
+      // WiFi 模式下不设置 __lastKReceivedAt，因为 webRequest 只是发送命令并收到简单响应
+      // 无法知道动作何时完成，所以让延时逻辑使用完整的设定延时时间
+      // 串口模式下会在 waitForSerialTokenLine 之后设置准确的动作完成时间
     `) + '\n';
     // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
     code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
   const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
   await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}, __from);
-  if (typeof window !== 'undefined') window.__lastSerialStartIndex = null;
-}\n`;
-    if (delayMs > 0) {
-        // 对于长时间延时，分段检查停止标志
-        if (delayMs > 100) {
-            code += `await (async () => {
-  const checkInterval = 100; // 每100ms检查一次
-  const totalChecks = Math.ceil(${delayMs} / checkInterval);
-  for (let i = 0; i < totalChecks; i++) {
-    checkStopExecution();
-    await new Promise(resolve => setTimeout(resolve, Math.min(checkInterval, ${delayMs} - i * checkInterval)));
+  // 串口模式：记录收到 "k" 的时间（动作完成）
+  if (typeof window !== 'undefined') {
+    window.__lastKReceivedAt = Date.now();
+    window.__lastSerialStartIndex = null;
   }
-})();\n`;
-        } else {
-            code += `checkStopExecution();\nawait new Promise(resolve => setTimeout(resolve, ${delayMs}));\n`;
+}
+`;
+    // 智能延迟：比较 delay 和实际耗时
+    code += wrapAsyncOperation(`
+      const __now = Date.now();
+      // 从 window 对象获取命令开始时间（解决作用域问题）
+      const __cmdStart = (typeof window !== 'undefined' && window.__lastCmdStart) 
+        ? window.__lastCmdStart 
+        : __now;
+      // 计算剩余延时时间
+      // WiFi 模式：无法知道动作何时完成，从命令发送时间开始计算完整延时
+      // 串口模式：知道动作完成时间，智能计算剩余延时
+      let __remainingDelay;
+      let __actualDuration = 0;
+      const __isWiFi = (typeof window !== 'undefined') && window.petoiClient;
+      
+      if (__isWiFi) {
+        // WiFi 模式：目标时间 = 命令发送时间 + 设定延时
+        const __targetTime = __cmdStart + ${delayMs};
+        __remainingDelay = __targetTime - __now;
+        __actualDuration = __now - __cmdStart;  // 用于冷却时间计算
+      } else {
+        // 串口模式：计算实际耗时（从发送命令到收到 "k"）
+        __actualDuration = (typeof window !== 'undefined' && window.__lastKReceivedAt) 
+          ? (window.__lastKReceivedAt - __cmdStart)
+          : (__now - __cmdStart);
+        __remainingDelay = ${delayMs} - __actualDuration;
+      }
+      if (__remainingDelay > 0) {
+        // 分段等待，每 100ms 检查一次停止标志
+        const __checkInterval = 100;
+        const __totalChecks = Math.ceil(__remainingDelay / __checkInterval);
+        for (let __i = 0; __i < __totalChecks; __i++) {
+          checkStopExecution();
+          const __waitTime = Math.min(__checkInterval, __remainingDelay - __i * __checkInterval);
+          if (__waitTime > 0) {
+            await new Promise(resolve => setTimeout(resolve, __waitTime));
+          }
         }
-    }
+      }
+      // 设置冷却时间：动作进行中由 waitForSerialTokenLine 保证不打断；完成后只需短时缓冲
+      // 串口下 actualDuration 可能很长（如 khi 5s），若全量作为冷却会导致"识别到手势后等很久才执行"
+      // 故对"完成后冷却"设上限（如 600ms），既防连发又保证下一手势尽快执行
+      const __postCompleteCapMs = 600;
+      const __finalCooldown = Math.max(${delayMs}, Math.min(__actualDuration, __postCompleteCapMs));
+      if (typeof window !== 'undefined') {
+        window.__commandCooldowns = window.__commandCooldowns || {};
+        window.__commandCooldowns[${JSON.stringify(cooldownKey)}] = __now + __finalCooldown;
+        // 设置全局动作锁（对所有 gait/posture/acrobatic 生效）
+        window.__motionBusyUntil = __now + __finalCooldown;
+        window.__motionBusyCmd = ${JSON.stringify(cooldownKey)};
+        // 清理临时变量
+        window.__lastKReceivedAt = null;
+        window.__lastCmdStart = null;
+      }
+    `) + '\n';
     return code;
 };
 
@@ -1006,12 +1159,15 @@ await (async function() {
   // 首次进入手势模式（WiFi 下设备可能响应慢或格式不同，失败不中断任务，仍标记已尝试并继续轮询 XGp）
   if (typeof window === 'undefined' || !window.__gestureActivated) {
     try {
-      // 分两步：先禁用固件自动反应，再启用手势传感器
-      await webRequest("XGr", 5000, true);
+      // 启用手势传感器，但禁用固件自动反应（使用小写 r）
+      // XGr~（小写 r + 终止符）= 禁用固件自动反应，让 Blockly 程序控制动作
+      // XGR~（大写 R + 终止符）= 启用固件自动反应，固件会自动执行内置动作序列
+      // 注意：大写字母命令必须以 ~ 结尾
+      await webRequest("XGr~", 5000, true);
       // 等待固件设置生效
       await new Promise(r => setTimeout(r, 200));
     } catch (e) {
-      if (typeof console !== 'undefined' && console.warn) console.warn('XGr (gesture enable) failed, continuing with XGp poll:', e && e.message ? e.message : e);
+      if (typeof console !== 'undefined' && console.warn) console.warn('XGr~ (gesture enable) failed, continuing with XGp poll:', e && e.message ? e.message : e);
     }
     if (typeof window !== 'undefined') window.__gestureActivated = true;
   }
@@ -1028,14 +1184,9 @@ await (async function() {
   if (typeof window !== 'undefined') {
     const __now = Date.now();
     
-    // 动作执行期间，等待一小段时间后返回 -1（避免同一手势重复触发，同时避免循环空转）
-    // WiFi 模式下，XGp 超时不代表动作完成，不能长时间等待 __motionBusyUntil，否则会导致任务队列积压和断连
-    // 改为每次等待 100ms，让设备端有时间处理命令，同时避免循环瞬间跑完
-    const __busyUntil = window.__motionBusyUntil || 0;
-    if (__now < __busyUntil) {
-      await new Promise(r => setTimeout(r, 100));
-      return -1;
-    }
+    // 优化策略：允许在动作执行期间检测手势，但会在动作积木中阻止执行新动作
+    // 这样可以在动作完成后立即响应下一个手势，提高实时性
+    // 注意：不再在这里返回 -1，让手势检测继续进行
     
     const __minInterval = (typeof window.__gesturePollIntervalMs === 'number')
       ? window.__gesturePollIntervalMs
@@ -1063,7 +1214,8 @@ await (async function() {
   let rawGesture = null;
   const __xgpTimeout = 1000;
   try {
-    rawGesture = await webRequest("XGp", __xgpTimeout, true);
+    // XGp~（大写字母命令需要 ~ 终止符，小写 p = 单次查询手势值）
+    rawGesture = await webRequest("XGp~", __xgpTimeout, true);
   } catch (e) {
     // 关键：XGp 偶发超时/断连时不要让程序整体中断，
     // 只把这次读数当作“无手势”，让循环继续，后续 exit_gesture_mode 才有机会执行。
@@ -1189,8 +1341,8 @@ await (async function() {
   }
   
   try {
-    // 发送Xg指令退出手势识别模式
-    let response = await webRequest("Xg", 5000, true);
+    // 发送Xg~指令退出手势识别模式（大写字母命令需要 ~ 终止符）
+    let response = await webRequest("Xg~", 5000, true);
     await new Promise(resolve => setTimeout(resolve, 100)); // 等待100ms
     
     // 检查响应（WebSocket模式可能直接返回，串口模式需要从缓冲区读取）
