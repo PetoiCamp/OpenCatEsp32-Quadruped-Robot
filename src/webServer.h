@@ -90,7 +90,7 @@ bool webTaskActive = false;
 String generateTaskId();
 void startWebTask(String taskId);
 void completeWebTask();
-void errorWebTask(String errorMessage);
+void errorWebTask(const String & errorMessage);
 void processNextWebTask();
 void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
 #ifdef CAMERA
@@ -495,8 +495,8 @@ void completeWebTask()
   processNextWebTask();
 }
 
-// Web任务错误处理
-void errorWebTask(String errorMessage)
+// Web任务错误处理（使用 StaticJsonDocument 避免堆分配，防止在堆已损坏时析构触发崩溃）
+void errorWebTask(const String & errorMessage)
 {
   if (!webTaskActive || currentWebTaskId == "") {
     return;
@@ -507,8 +507,8 @@ void errorWebTask(String errorMessage)
     task.status = "error";
     task.resultReady = true;
 
-    // 发送错误状态给客户端
-    JsonDocument errorDoc;
+    // 发送错误状态给客户端（栈上 StaticJsonDocument，不触发堆 free）
+    StaticJsonDocument<384> errorDoc;
     errorDoc["type"] = "response";
     errorDoc["taskId"] = currentWebTaskId;
     errorDoc["status"] = "error";

@@ -22,132 +22,75 @@ const JOINT_QUERY_TIMEOUT = TIMEOUT_CONFIG.COMMAND.JOINT_QUERY_TIMEOUT; // 关�
 Blockly.JavaScript.forBlock["gait"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
-    const delayMs = Math.round(delay * 1000);
-    // 统一规则（WiFi/串口一致）：
-    // 先等待动作完成 token，再从“收到 token 的时刻”开始计时 delayMs。
-    // 这样即使 delayMs 为 0，也不会在动作完成前进入下一条语句，从而避免打断动作。
-    let code = wrapAsyncOperation(`
-      const __now = Date.now();
-      if (typeof window !== 'undefined') {
-        // 串口等待：记录发送前缓冲区长度，避免命中旧 token
-        const __sb = (typeof serialBuffer === 'string')
-          ? serialBuffer
-          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
-        window.__lastSerialStartIndex = __sb.length;
-        // 全局动作锁：若正忙则等待（避免并发触发导致乱序/丢指令）
-        const __busyUntil = window.__motionBusyUntil || 0;
-        if (__now < __busyUntil) {
-          const __waitUntil = __busyUntil;
-          const __maxWait = 20000;
-          const __startWait = Date.now();
-          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
-            checkStopExecution();
-            await new Promise(r => setTimeout(r, 100));
-          }
-          if (Date.now() < __waitUntil) return true;
-        }
-      }
-      await webRequest("${cmd}", 20000, true);
-      // WiFi 模式：webRequest resolve 视为动作完成 / token 时刻
-      if (typeof window !== 'undefined' && window.petoiClient) {
-        window.__lastTokenReceivedAt = Date.now();
-      }
-    `) + '\n';
-    // 串口模式时等待完成信号：gait 指令一般以 'k' 作为完成标记
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
-  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
-  await waitForSerialTokenLine('k', 20000, __from);
-  // 串口模式：记录收到 "k" 的时间（动作完成 / token时刻）
-  if (typeof window !== 'undefined') {
-    window.__lastTokenReceivedAt = Date.now();
-    window.__lastSerialStartIndex = null;
+    const delayMs = Math.ceil(delay * 1000);
+
+    let code = `
+checkStopExecution();
+await (async function() {
+  const __from = (typeof serialBuffer === 'string')
+    ? serialBuffer.length
+    : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
+  await webRequest("${cmd}", 20000, true);
+  // 串口模式时等待完成信号：gait 指令一般以 'k' 作为完成标记
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+    await waitForSerialTokenLine('k', 20000, __from);
   }
-}
+  // 收到 token 的时刻（WiFi：webRequest 在收到 k 后 resolve；串口：waitForSerialTokenLine 已返回）
+  if (typeof window !== 'undefined') window.__lastTokenReceivedAt = Date.now();
+  return true;
+})()
 `;
-    // 从 token 时刻开始计时 delayMs（而不是从“发送命令”开始）
-    code += wrapAsyncOperation(`
-      const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number')
-        ? window.__lastTokenReceivedAt
-        : Date.now();
-      if (typeof window !== 'undefined') {
-        window.__motionBusyUntil = __tokenAt + ${delayMs};
-        window.__motionBusyCmd = ${JSON.stringify(`gait:${cmd}`)};
-      }
-      if (${delayMs} > 0) {
-        const __checkInterval = 100;
-        const __totalChecks = Math.ceil(${delayMs} / __checkInterval);
-        for (let __i = 0; __i < __totalChecks; __i++) {
-          checkStopExecution();
-          const __waitTime = Math.min(__checkInterval, ${delayMs} - __i * __checkInterval);
-          if (__waitTime > 0) await new Promise(r => setTimeout(r, __waitTime));
-        }
-      }
-    `) + '\n';
+
+    if (delayMs > 0) {
+        code += `await (async () => {
+  const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number') ? window.__lastTokenReceivedAt : Date.now();
+  const __endAt = __tokenAt + ${delayMs};
+  const __checkInterval = 100;
+  while (Date.now() < __endAt) {
+    checkStopExecution();
+    const __wait = Math.min(__checkInterval, __endAt - Date.now());
+    if (__wait > 0) await new Promise(r => setTimeout(r, __wait));
+  }
+})();\n`;
+    }
     return code;
 };
 
-// 代码生成:发送姿势动作命令
+// 代码生成:发送姿势动作命令（收到 token 后记录时刻并从该时刻开始延时）
 Blockly.JavaScript.forBlock["posture"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
-    const delayMs = Math.round(delay * 1000);
+    const delayMs = Math.ceil(delay * 1000);
 
-    // 统一规则（WiFi/串口一致）：
-    // 先等待动作完成 token，再从“收到 token 的时刻”开始计时 delayMs。
-    let code = wrapAsyncOperation(`
-      const __now = Date.now();
-      if (typeof window !== 'undefined') {
-        const __sb = (typeof serialBuffer === 'string')
-          ? serialBuffer
-          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
-        window.__lastSerialStartIndex = __sb.length;
-        const __busyUntil = window.__motionBusyUntil || 0;
-        if (__now < __busyUntil) {
-          const __waitUntil = __busyUntil;
-          const __maxWait = 15000;
-          const __startWait = Date.now();
-          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
-            checkStopExecution();
-            await new Promise(r => setTimeout(r, 100));
-          }
-          if (Date.now() < __waitUntil) return true;
-        }
-      }
-      await webRequest("${cmd}", 10000, true);
-      if (typeof window !== 'undefined' && window.petoiClient) {
-        window.__lastTokenReceivedAt = Date.now();
-      }
-    `) + '\n';
-    // 串口模式时等待完成信号：'k...' 返回 'k'；'d'（rest）返回 'd'
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
-  const _tok = '${cmd}'.charAt(0); 
-  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
-  await waitForSerialTokenLine(_tok, 15000, __from);
-  // 串口模式：记录收到 token 的时间（动作完成 / token时刻）
-  if (typeof window !== 'undefined') {
-    window.__lastTokenReceivedAt = Date.now();
-    window.__lastSerialStartIndex = null;
+    let code = `
+checkStopExecution();
+await (async function() {
+  const __from = (typeof serialBuffer === 'string')
+    ? serialBuffer.length
+    : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
+  await webRequest("${cmd}", 10000, true);
+  // 串口模式时等待完成信号：'k...' 返回 'k'；'d'（rest）返回 'd'
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+    const _tok = '${cmd}'.charAt(0);
+    await waitForSerialTokenLine(_tok, 15000, __from);
   }
-}
+  if (typeof window !== 'undefined') window.__lastTokenReceivedAt = Date.now();
+  return true;
+})()
 `;
-    code += wrapAsyncOperation(`
-      const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number')
-        ? window.__lastTokenReceivedAt
-        : Date.now();
-      if (typeof window !== 'undefined') {
-        window.__motionBusyUntil = __tokenAt + ${delayMs};
-        window.__motionBusyCmd = ${JSON.stringify(`posture:${cmd}`)};
-      }
-      if (${delayMs} > 0) {
-        const __checkInterval = 100;
-        const __totalChecks = Math.ceil(${delayMs} / __checkInterval);
-        for (let __i = 0; __i < __totalChecks; __i++) {
-          checkStopExecution();
-          const __waitTime = Math.min(__checkInterval, ${delayMs} - __i * __checkInterval);
-          if (__waitTime > 0) await new Promise(r => setTimeout(r, __waitTime));
-        }
-      }
-    `) + '\n';
+
+    if (delayMs > 0) {
+        code += `await (async () => {
+  const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number') ? window.__lastTokenReceivedAt : Date.now();
+  const __endAt = __tokenAt + ${delayMs};
+  const __checkInterval = 100;
+  while (Date.now() < __endAt) {
+    checkStopExecution();
+    const __wait = Math.min(__checkInterval, __endAt - Date.now());
+    if (__wait > 0) await new Promise(r => setTimeout(r, __wait));
+  }
+})();\n`;
+    }
     return code;
 };
 
@@ -229,65 +172,39 @@ function generateFallbackNotes(tones) {
     return fallbackCode;
 }
 
-// 代码生成:发送杂技动作命令
+// 代码生成:发送杂技动作命令（收到 token 后记录时刻并从该时刻开始延时）
 Blockly.JavaScript.forBlock["acrobatic_moves"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
-    const delayMs = Math.round(delay * 1000);
-    // 统一规则：先等 token，再从 token 时刻开始延时
-    let code = wrapAsyncOperation(`
-      const __now = Date.now();
-      if (typeof window !== 'undefined') {
-        const __sb = (typeof serialBuffer === 'string')
-          ? serialBuffer
-          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
-        window.__lastSerialStartIndex = __sb.length;
-        const __busyUntil = window.__motionBusyUntil || 0;
-        if (__now < __busyUntil) {
-          const __waitUntil = __busyUntil;
-          const __maxWait = ${ACROBATIC_MOVES_TIMEOUT};
-          const __startWait = Date.now();
-          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
-            checkStopExecution();
-            await new Promise(r => setTimeout(r, 100));
-          }
-          if (Date.now() < __waitUntil) return true;
-        }
-      }
-      await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);
-      if (typeof window !== 'undefined' && window.petoiClient) {
-        window.__lastTokenReceivedAt = Date.now();
-      }
-    `) + '\n';
-    // 杂技动作同属技能，完成标记也为 'k'（串口模式时）
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
-  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
-  await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}, __from);
-  // 串口模式：记录收到 token 的时间（动作完成 / token时刻）
-  if (typeof window !== 'undefined') {
-    window.__lastTokenReceivedAt = Date.now();
-    window.__lastSerialStartIndex = null;
+    const delayMs = Math.ceil(delay * 1000);
+
+    let code = `
+checkStopExecution();
+await (async function() {
+  const __from = (typeof serialBuffer === 'string')
+    ? serialBuffer.length
+    : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
+  await webRequest("${cmd}", ${ACROBATIC_MOVES_TIMEOUT}, true);
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+    await waitForSerialTokenLine('k', ${ACROBATIC_MOVES_TIMEOUT}, __from);
   }
-}
+  if (typeof window !== 'undefined') window.__lastTokenReceivedAt = Date.now();
+  return true;
+})()
 `;
-    code += wrapAsyncOperation(`
-      const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number')
-        ? window.__lastTokenReceivedAt
-        : Date.now();
-      if (typeof window !== 'undefined') {
-        window.__motionBusyUntil = __tokenAt + ${delayMs};
-        window.__motionBusyCmd = ${JSON.stringify(`acrobatic:${cmd}`)};
-      }
-      if (${delayMs} > 0) {
-        const __checkInterval = 100;
-        const __totalChecks = Math.ceil(${delayMs} / __checkInterval);
-        for (let __i = 0; __i < __totalChecks; __i++) {
-          checkStopExecution();
-          const __waitTime = Math.min(__checkInterval, ${delayMs} - __i * __checkInterval);
-          if (__waitTime > 0) await new Promise(r => setTimeout(r, __waitTime));
-        }
-      }
-    `) + '\n';
+
+    if (delayMs > 0) {
+        code += `await (async () => {
+  const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number') ? window.__lastTokenReceivedAt : Date.now();
+  const __endAt = __tokenAt + ${delayMs};
+  const __checkInterval = 100;
+  while (Date.now() < __endAt) {
+    checkStopExecution();
+    const __wait = Math.min(__checkInterval, __endAt - Date.now());
+    if (__wait > 0) await new Promise(r => setTimeout(r, __wait));
+  }
+})();\n`;
+    }
     return code;
 };
 
@@ -686,66 +603,40 @@ await (async function() {
     return [code, Blockly.JavaScript.ORDER_FUNCTION_CALL];
 };
 
-//机械臂动作积木的代码生成器
+//机械臂动作积木的代码生成器（收到 token 后记录时刻并从该时刻开始延时）
 javascript.javascriptGenerator.forBlock["arm_action"] = function (block) {
     const cmd = block.getFieldValue("COMMAND");
     const delay = block.getFieldValue("DELAY");
-    const delayMs = Math.round(delay * 1000);
-    // 统一规则：先等 token，再从 token 时刻开始延时
-    let code = wrapAsyncOperation(`
-      const __now = Date.now();
-      if (typeof window !== 'undefined') {
-        const __sb = (typeof serialBuffer === 'string')
-          ? serialBuffer
-          : ((typeof window.serialBuffer === 'string') ? window.serialBuffer : '');
-        window.__lastSerialStartIndex = __sb.length;
-        const __busyUntil = window.__motionBusyUntil || 0;
-        if (__now < __busyUntil) {
-          const __waitUntil = __busyUntil;
-          const __maxWait = 20000;
-          const __startWait = Date.now();
-          while (Date.now() < __waitUntil && (Date.now() - __startWait) < __maxWait) {
-            checkStopExecution();
-            await new Promise(r => setTimeout(r, 100));
-          }
-          if (Date.now() < __waitUntil) return true;
-        }
-      }
-      await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);
-      if (typeof window !== 'undefined' && window.petoiClient) {
-        window.__lastTokenReceivedAt = Date.now();
-      }
-    `) + '\n';
-    // 机械臂动作通常是技能类（k开头），串口模式下等待'k'完成标记
-    code += `if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') { 
-  const _tok = '${cmd}'.charAt(0); 
-  const __from = (typeof window !== 'undefined' && typeof window.__lastSerialStartIndex === 'number') ? window.__lastSerialStartIndex : undefined;
-  await waitForSerialTokenLine(_tok, ${LONG_COMMAND_TIMEOUT}, __from); 
-  // 串口模式：记录收到 token 的时间（动作完成 / token时刻）
-  if (typeof window !== 'undefined') {
-    window.__lastTokenReceivedAt = Date.now();
-    window.__lastSerialStartIndex = null;
+    const delayMs = Math.ceil(delay * 1000);
+
+    let code = `
+checkStopExecution();
+await (async function() {
+  const __from = (typeof serialBuffer === 'string')
+    ? serialBuffer.length
+    : ((typeof window !== 'undefined' && typeof window.serialBuffer === 'string') ? window.serialBuffer.length : undefined);
+  await webRequest("${cmd}", ${LONG_COMMAND_TIMEOUT}, true);
+  if (!((typeof window !== 'undefined') && window.petoiClient) && typeof waitForSerialTokenLine === 'function') {
+    const _tok = '${cmd}'.charAt(0);
+    await waitForSerialTokenLine(_tok, ${LONG_COMMAND_TIMEOUT}, __from);
   }
-}
+  if (typeof window !== 'undefined') window.__lastTokenReceivedAt = Date.now();
+  return true;
+})()
 `;
-    code += wrapAsyncOperation(`
-      const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number')
-        ? window.__lastTokenReceivedAt
-        : Date.now();
-      if (typeof window !== 'undefined') {
-        window.__motionBusyUntil = __tokenAt + ${delayMs};
-        window.__motionBusyCmd = ${JSON.stringify(`arm_action:${cmd}`)};
-      }
-      if (${delayMs} > 0) {
-        const __checkInterval = 100;
-        const __totalChecks = Math.ceil(${delayMs} / __checkInterval);
-        for (let __i = 0; __i < __totalChecks; __i++) {
-          checkStopExecution();
-          const __waitTime = Math.min(__checkInterval, ${delayMs} - __i * __checkInterval);
-          if (__waitTime > 0) await new Promise(r => setTimeout(r, __waitTime));
-        }
-      }
-    `) + '\n';
+
+    if (delayMs > 0) {
+        code += `await (async () => {
+  const __tokenAt = (typeof window !== 'undefined' && typeof window.__lastTokenReceivedAt === 'number') ? window.__lastTokenReceivedAt : Date.now();
+  const __endAt = __tokenAt + ${delayMs};
+  const __checkInterval = 100;
+  while (Date.now() < __endAt) {
+    checkStopExecution();
+    const __wait = Math.min(__checkInterval, __endAt - Date.now());
+    if (__wait > 0) await new Promise(r => setTimeout(r, __wait));
+  }
+})();\n`;
+    }
     return code;
 };
 

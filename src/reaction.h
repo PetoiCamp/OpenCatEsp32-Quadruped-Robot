@@ -4,7 +4,7 @@
 // Async web server function declarations
 #ifdef WEB_SERVER
 void completeWebTask();
-void errorWebTask(String errorMessage);
+void errorWebTask(const String & errorMessage);
 void finishWebCommand();
 #endif
 
@@ -1532,10 +1532,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               || lowerToken == T_PAUSE || token == T_JOINTS || token == T_RANDOM_MIND || token == T_BALANCE_SLOPE
               || token == T_ACCELERATE || token == T_DECELERATE || token == T_TILT))
         token = T_SKILL;
-    }
 #ifdef WEB_SERVER
-    finishWebCommand();
+      // 仅在此分支（已在本轮打印 token）时通知 Web 任务完成；one-shot 技能在下方打印 'k' 后再调用 finishWebCommand()
+      finishWebCommand();
 #endif
+    }
     resetCmd();
 #ifdef PWM_LED_PIN
     if (autoLedQ)
@@ -1577,6 +1578,10 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
       for (int i = 0; i < DOF; i++)
         currentAdjust[i] = 0;
       printToAllPorts(token);  // behavior can confirm completion by sending the token back
+#ifdef WEB_SERVER
+      // one-shot 技能在此处才打印 'k'，在此之后通知 Web 任务完成，使 WiFi 端在收到 token "k" 时才开始延时
+      finishWebCommand();
+#endif
 #ifdef GYRO_PIN
       if (xyzReal[2] > 0 && (fabs(ypr[1]) > 45 || fabs(ypr[2]) > 45)) {  // wait for imu to update
         while (fabs(ypr[1]) > 10 || fabs(ypr[2]) > 10) {
