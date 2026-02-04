@@ -1813,6 +1813,18 @@ async function webRequest(command, timeout = 5000, isRest = false, expectedRespo
     
     let result = await window.petoiClient.sendCommand(finalCommand, timeout, expectedResponse);
     
+    // 对于扩展命令（X开头的命令，如 XGp~、XGr~、Xg~），
+    // 固件会先输出具体响应，然后输出 'X' token 确认命令完成
+    // 在 Web 模式下，我们需要过滤掉这个额外的 'X' token，避免污染响应结果
+    const isExtensionCommand = (command && typeof command === 'string' && command.trim().toUpperCase().startsWith('X'));
+    if (isExtensionCommand && Array.isArray(result) && result.length > 1) {
+      // 过滤掉单独的 'X' token（保留其他响应）
+      result = result.filter(item => {
+        const itemStr = String(item).trim();
+        return itemStr !== 'X' && itemStr !== 'x';
+      });
+    }
+    
     // 与 communication.js 一致：单元素数组展开为标量，便于传感器积木（如手势值）解析
     if (Array.isArray(result) && result.length === 1) {
       result = result[0];
@@ -1821,7 +1833,7 @@ async function webRequest(command, timeout = 5000, isRest = false, expectedRespo
     // 在收到响应后记录到Console Log（异步执行，避免 DOM 操作阻塞 return，影响手势轮询实时性）
     // XGp 无手势(-1) 时不记录，避免大量 -1 轮询刷屏导致 DOM 积压、后续手势识别变慢
     if (showSentCommands && typeof logCommandResponse === 'function') {
-      const isXGpNoGesture = (command === 'XGp' || finalCommand === 'XGp') && (
+      const isXGpNoGesture = (command === 'XGp' || finalCommand === 'XGp' || command === 'XGp~' || finalCommand === 'XGp~') && (
         result === -1 || result === '-1' ||
         (typeof result === 'string' && (result.trim() === '-1' || (result.match(/-?\\d+/) && parseInt(result.match(/-?\\d+/)[0], 10) === -1)))
       );
