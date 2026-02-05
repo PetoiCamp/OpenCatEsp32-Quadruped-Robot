@@ -495,7 +495,7 @@ void completeWebTask()
   processNextWebTask();
 }
 
-// Web任务错误处理（使用 StaticJsonDocument 避免堆分配，防止在堆已损坏时析构触发崩溃）
+// Web task error handling
 void errorWebTask(const String & errorMessage)
 {
   if (!webTaskActive || currentWebTaskId == "") {
@@ -507,8 +507,8 @@ void errorWebTask(const String & errorMessage)
     task.status = "error";
     task.resultReady = true;
 
-    // 发送错误状态给客户端（栈上 StaticJsonDocument，不触发堆 free）
-    StaticJsonDocument<384> errorDoc;
+    // Send error status to client (ArduinoJson 7: JsonDocument replaces StaticJsonDocument)
+    JsonDocument errorDoc;
     errorDoc["type"] = "response";
     errorDoc["taskId"] = currentWebTaskId;
     errorDoc["status"] = "error";

@@ -421,9 +421,10 @@ void read_serial() {
         } while (serialPort->available());
         lastSerialTime = millis();
       }
-    } while (newCmd[cmdLen - 1] != terminator && long(millis() - lastSerialTime) < serialTimeout);  // the lower case tokens are encoded in ASCII and can be entered in Arduino IDE's serial monitor
-                                                                                                    // if the terminator of the command is set to "no line ending" or "new line", parsing can be different
-                                                                                                    // so it needs a timeout for the no line ending case
+    } while ((cmdLen == 0                                                                               // wait for at least 1 byte when cmdLen==0; 
+      || newCmd[cmdLen - 1] != terminator) && long(millis() - lastSerialTime) < serialTimeout);// the lower case tokens are encoded in ASCII and can be entered in Arduino IDE's serial monitor
+                                                                                               // if the terminator of the command is set to "no line ending" or "new line", parsing can be different
+                                                                                               // so it needs a timeout for the no line ending case
     // PTH("* " + source, long(millis() - lastSerialTime));
     if (!(token >= 'A' && token <= 'Z') || token == 'X' || token == 'R' || token == 'W') {  // serial monitor is used to send lower cased tokens by users
                                                                                             // delete the unexpected '\r' '\n' if the serial monitor sends line ending symbols
@@ -435,7 +436,8 @@ void read_serial() {
         }
       }
     }
-    cmdLen = (newCmd[cmdLen - 1] == terminator) ? cmdLen - 1 : cmdLen;
+    if (cmdLen > 0)
+      cmdLen = (newCmd[cmdLen - 1] == terminator) ? cmdLen - 1 : cmdLen;  // delete the terminator if it exists
     newCmd[cmdLen] = (token >= 'A' && token <= 'Z') ? '~' : '\0';
     if (token >= 'A' && token <= 'Z')
       newCmd[cmdLen + 1] = '\0';
