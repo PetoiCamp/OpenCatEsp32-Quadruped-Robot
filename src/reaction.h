@@ -1516,7 +1516,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         }
     }
 
-    if (token == T_SKILL && newCmd[0] != '\0') {
+    if (lowerToken == T_SKILL && newCmd[0] != '\0') {// T_SKILL_DATA sets newCmd="tmp"; must update lastCmd so next "kup" triggers reload
       // if (skill->period > 0)
       // Use strncpy with bounds checking to prevent buffer overflow
       strncpy(lastCmd, newCmd, CMD_LEN);
