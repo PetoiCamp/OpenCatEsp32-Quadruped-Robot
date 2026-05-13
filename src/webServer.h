@@ -159,39 +159,38 @@ void checkConnectionHealth() {
   
   unsigned long effectiveTimeout = bleActive ? (HEARTBEAT_TIMEOUT + 15000) : HEARTBEAT_TIMEOUT;
   
-  // 检查心跳超时
-  for (auto it = lastHeartbeat.begin(); it != lastHeartbeat.end();) {
-    uint8_t clientId = it->first;
-    unsigned long lastHeartbeatTime = it->second;
-    
-    if (currentTime - lastHeartbeatTime > effectiveTimeout) {
-      if (bleActive) {
-        WEB_WARN("Client heartbeat timeout during BLE activity: ", clientId);
-      } else {
-        WEB_ERROR("Client heartbeat timeout, disconnecting: ", clientId);
-      }
-      
-      // 发送超时通知（包含BLE状态信息）
-      String timeoutMsg = bleActive ? 
-        "{\"type\":\"error\",\"error\":\"Heartbeat timeout during BLE scan\"}" :
-        "{\"type\":\"error\",\"error\":\"Heartbeat timeout\"}";
-      sendSocketResponse(clientId, timeoutMsg);
-      
-      // 断开连接
-      webSocket.disconnect(clientId);
-      
-      // 清理客户端状态
-      connectedClients.erase(clientId);
-      it = lastHeartbeat.erase(it);
-      
-      // 如果当前任务属于这个客户端，需要处理
-      if (webTaskActive && currentWebTaskId != "" && 
-          webTasks.find(currentWebTaskId) != webTasks.end() && 
-          webTasks[currentWebTaskId].clientId == clientId) {
-        errorWebTask("Client disconnected due to heartbeat timeout");
-      }
+  // Collect timed-out clients first. webSocket.disconnect() runs the disconnect handler
+  // synchronously and erases lastHeartbeat entries — do not hold a map iterator across it
+  // or iterators are invalidated (undefined behavior / heap corruption).
+  uint8_t timedOutIds[MAX_CLIENTS];
+  size_t timedOutCount = 0;
+  for (const auto &entry : lastHeartbeat) {
+    if (currentTime - entry.second > effectiveTimeout && timedOutCount < MAX_CLIENTS) {
+      timedOutIds[timedOutCount++] = entry.first;
+    }
+  }
+  for (size_t i = 0; i < timedOutCount; i++) {
+    uint8_t clientId = timedOutIds[i];
+    if (bleActive) {
+      WEB_WARN("Client heartbeat timeout during BLE activity: ", clientId);
     } else {
-      ++it;
+      WEB_ERROR("Client heartbeat timeout, disconnecting: ", clientId);
+    }
+
+    String timeoutMsg = bleActive ?
+      "{\"type\":\"error\",\"error\":\"Heartbeat timeout during BLE scan\"}" :
+      "{\"type\":\"error\",\"error\":\"Heartbeat timeout\"}";
+    sendSocketResponse(clientId, timeoutMsg);
+
+    webSocket.disconnect(clientId);
+
+    connectedClients.erase(clientId);
+    lastHeartbeat.erase(clientId);
+
+    if (webTaskActive && currentWebTaskId != "" &&
+        webTasks.find(currentWebTaskId) != webTasks.end() &&
+        webTasks[currentWebTaskId].clientId == clientId) {
+      errorWebTask("Client disconnected due to heartbeat timeout");
     }
   }
 }
