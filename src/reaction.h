@@ -1477,6 +1477,7 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 }
                 deferSkillTokenEcho = true;
               } else if (lastChar == 'L' || lastChar == 'R') {
+#ifdef GYRO_PIN
                 // Turning gait - set up turning control
                 // Note: wkR should turn counterclockwise (negative yaw), wkL should turn clockwise (positive yaw)
                 // This matches polar coordinate convention where positive angle is counterclockwise
@@ -1492,6 +1493,23 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
                 PTHL(" initial yaw: ", initialYawAngle);
                 PTHL(" target angle: ", targetYawAngle);
                 PTHL(" turning direction: ", lastChar == 'R' ? "RIGHT (CCW)" : "LEFT (CW)");
+#else
+                // No IMU: cannot close loop on yaw; use the same cycle/time control as straight gaits.
+                if (timeOrAngle < 200) {
+                  cycleCountingMode = true;
+                  targetCycles = timeOrAngle;
+                  completedCycles = 0;
+                  PTH("Cycle counting mode (turn, no gyro): ", targetCycles);
+                  PTHL(" cycles, Period: ", skill->period);
+                } else {
+                  cycleCountingMode = false;
+                  tQueue->addTask('k', skillName, timeOrAngle);
+                  tQueue->addTask('k', "up");
+                  PTH("Time-based mode (turn, no gyro): ", skillName);
+                  PTH(" for ", timeOrAngle);
+                  PTL(" ms");
+                }
+#endif
                 deferSkillTokenEcho = true;
               }
             }
