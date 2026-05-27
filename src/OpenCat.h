@@ -401,7 +401,7 @@ bool newBoard = false;
 #define IMU_EXCEPTION_TURNING -7
 
 char defaultLan = 'a';
-char currentLan;
+char currentLan = 'a';
 // bool updated[10];
 float degPerRad = 180 / M_PI;
 float radPerDeg = M_PI / 180;
@@ -515,8 +515,14 @@ String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Li
 #ifdef NYBBLE
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
 #else
-// default enable Grove_Serial for the AI dialogue module to work.
+#ifdef BiBoard_V1_0 
+// default enable Grove_Serial + Voice + BackTouch (BiBoard_V1_0: Serial2 / Serial1 / pin 38 — no UART conflict)
 bool moduleActivatedQ[] = {1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+#else 
+// for BiBoard V0.1/V0.2
+// Both Voice and Grove_Serial utilize Serial2; therefore, they cannot be enabled simultaneously by default.
+bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0}; 
+#endif 
 #endif
 bool moduleDemoQ = false;
 int8_t moduleIndex;
@@ -764,5 +770,9 @@ void initRobot() {
 #endif
   PTL("Ready!");
   beep(24, 50);
+#ifdef VOICE
+  if (moduleActivatedQfunction(EXTENSION_VOICE))
+    voiceSyncAtStartup();  // after IMU/BLE/servos — voice module needs full boot delay
+#endif
   idleTimer = millis();
 }

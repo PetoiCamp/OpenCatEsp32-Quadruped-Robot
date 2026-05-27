@@ -312,9 +312,15 @@ void reconfigureTheActiveModule(char *moduleCode) {
         (!isCloseOnlyOperation && moduleList[i] == targetModule)) continue;
     
     // Original logic: protect voice and backtouch unless closing all
-    if (!isCloseOnlyOperation && 
-        (moduleList[i] == EXTENSION_VOICE || moduleList[i] == EXTENSION_BACKTOUCH) && 
-        targetModule != '-') continue;
+    // BiBoard_V1_0: Grove_Serial (Serial2) and Voice (Serial1) can coexist
+    if (!isCloseOnlyOperation &&
+        (moduleList[i] == EXTENSION_VOICE || moduleList[i] == EXTENSION_BACKTOUCH
+#ifdef BiBoard_V1_0
+         || moduleList[i] == EXTENSION_GROVE_SERIAL
+#endif
+         ) &&
+        targetModule != '-')
+      continue;
     
     // Unified disable logic
     PTHL("- disable", moduleNames[i]);
@@ -356,7 +362,16 @@ void reconfigureTheActiveModule(char *moduleCode) {
 void initModuleManager() {
   byte moduleCount = sizeof(moduleList) / sizeof(char);
   PTHL("Module count: ", moduleCount);
+#ifdef VOICE
+  // Init Voice before Grove Serial2 so Serial1 gets RX26/TX25 before UART2 uses 9/10
+  if (moduleActivatedQfunction(EXTENSION_VOICE))
+    initModule(EXTENSION_VOICE);
+#endif
   for (byte i = 0; i < moduleCount; i++) {
+#ifdef VOICE
+    if (moduleList[i] == EXTENSION_VOICE)
+      continue;
+#endif
     if (moduleActivatedQ[i]) {
       initModule(moduleList[i]);
     }

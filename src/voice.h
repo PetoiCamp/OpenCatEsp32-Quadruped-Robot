@@ -74,17 +74,39 @@ String customizedCmdList[] = {
 };
 int listLength = 0;
 bool enableVoiceQ = true;
+
 void beginVoiceSerial() {
-  if (!SERIAL_VOICE) {
-    // PTL("Begin Voice Serial port");
+  // ESP32 HardwareSerial is always truthy; "if (!SERIAL_VOICE)" never runs begin().
+  // Always (re)open with explicit pins so Grove Serial2 init cannot leave UART on wrong GPIO.
+  SERIAL_VOICE.end();
 #ifdef BiBoard_V1_0
-    SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE, SERIAL_8N1, VOICE_RX, VOICE_TX);
+  SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE, SERIAL_8N1, VOICE_RX, VOICE_TX);
+  PTLF("Voice Serial1 @9600 (RX26 TX25)");
 #else
-    SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE);
+  SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE);
+  PTLF("Voice Serial2 @9600");
 #endif
-    SERIAL_VOICE.setTimeout(5);
-  }
+  SERIAL_VOICE.setTimeout(5);
   delay(20);
+}
+
+// Drain RX for a while; config commands often have no immediate reply (do not treat as UART failure).
+static void drainVoiceRx(unsigned long ms = 200) {
+  unsigned long t0 = millis();
+  while (millis() - t0 < ms) {
+    while (SERIAL_VOICE.available())
+      (void)SERIAL_VOICE.read();
+    delay(1);
+  }
+}
+
+// Send X-prefixed command (cmd without leading 'X', e.g. "Aa", "Ac").
+static void sendVoiceModuleCmd(const char *cmd) {
+  PTH("Voice TX: X", cmd);
+  PTL();
+  SERIAL_VOICE.print("X");
+  SERIAL_VOICE.println(cmd);
+  drainVoiceRx();
 }
 
 void set_voice(char *cmd) {  // send some control command directly to the module
@@ -98,6 +120,7 @@ void set_voice(char *cmd) {  // send some control command directly to the module
   if (cmd[1] == 'a' || cmd[1] == 'b') {  // enter "XAa" in the serial monitor or add button "X65,97" in the mobile app to switch to English
     // 在串口监视器输入指令“XAa”或在手机app创建按键"X65,97"来切换到英文
     defaultLan = cmd[1];
+    currentLan = cmd[1];
 #ifdef I2C_EEPROM_ADDRESS
     i2c_eeprom_write_byte(EEPROM_DEFAULT_LAN, defaultLan);
     i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, currentLan);
@@ -111,21 +134,7 @@ void set_voice(char *cmd) {  // send some control command directly to the module
   while (cmd[c] != '\0' && cmd[c] != '~')
     c++;
   cmd[c] = '\0';
-  SERIAL_VOICE.print("X");
-  SERIAL_VOICE.println(cmd);
-  delay(10);
-  if (!SERIAL_VOICE.available()) {  // the serial port may need to re-open for the first time after rebooting. Don't know why.
-    SERIAL_VOICE.end();
-    PTLF("Reopen Voice Serial port");
-    beginVoiceSerial();
-    delay(10);
-    SERIAL_VOICE.print("X");
-    SERIAL_VOICE.println(cmd);
-    delay(10);
-  }
-  while (SERIAL_VOICE.available())  // avoid echo
-    PT(char(SERIAL_VOICE.read()));
-  PTL();
+  sendVoiceModuleCmd(cmd);
   if (!strcmp(cmd, "Ac"))  // enter "XAc" in the serial monitor or add button "X65,99" in the mobile app to enable voice reactions
                            // 在串口监视器输入指令“XAc”或在手机app创建按键"X65,99"来激活语音动作
     enableVoiceQ = true;
@@ -145,26 +154,42 @@ void voiceSetup() {
   PTF("Number of customized voice commands on the main board: ");
   PTL(listLength);
   beginVoiceSerial();
-  if (currentLan != defaultLan) {
-    char temp[4] = "XA\0";
-    temp[2] = defaultLan;
-    SERIAL_VOICE.println(temp);
-    currentLan = defaultLan;
-#ifdef I2C_EEPROM_ADDRESS
-    i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, currentLan);
-#else
-    config.putChar("currentLan", currentLan);
-#endif
-  }
-
-  SERIAL_VOICE.println("XAc");
-  PTLF("Turn on the audio response");
-  enableVoiceQ = true;
+  // Language + XAc are sent in voiceSyncAtStartup() after all modules finish init.
 }
+
+void voiceSyncAtStartup() {
+  delay(800);  // voice module MCU boot (longer on battery power)
+  sendVoiceModuleCmd("Ac");
+  delay(350);
+
+  if (defaultLan == 'a') {
+    // English default: XAc -> XAb -> XAa (module needs this order on cold boot)
+    sendVoiceModuleCmd("Ab");
+    delay(350);
+    sendVoiceModuleCmd("Aa");
+    currentLan = 'a';
+  } else {
+    char lan = (currentLan == 'a' || currentLan == 'b') ? currentLan : defaultLan;
+    if (lan != 'a' && lan != 'b')
+      lan = 'b';
+    char langCmd[3] = {'A', lan, '\0'};
+    sendVoiceModuleCmd(langCmd);
+    currentLan = lan;
+  }
+#ifdef I2C_EEPROM_ADDRESS
+  i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, currentLan);
+#else
+  config.putChar("currentLan", currentLan);
+#endif
+  delay(350);
+  enableVoiceQ = true;
+  PTHL("Voice ready, language: ", currentLan == 'b' ? "Chinese" : "English");
+  PTLF("Turn on the audio response");
+}
+
 void voiceStop() {
   beginVoiceSerial();
-  SERIAL_VOICE.println("XAd");
-  delay(5);
+  sendVoiceModuleCmd("Ad");
   SERIAL_VOICE.end();
   PTLF("Turn off the audio response");
   enableVoiceQ = false;
