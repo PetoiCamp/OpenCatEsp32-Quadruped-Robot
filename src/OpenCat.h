@@ -77,7 +77,7 @@
 #define BOARD "B"
 #endif
 
-#define DATE "260522"  // YYMMDD
+#define DATE "260527"  // YYMMDD
 String SoftwareVersion = "";
 String uniqueName = "";
 
@@ -515,7 +515,8 @@ String moduleNames[] = {"Grove_Serial", "Voice",      "Double_Touch", "Double_Li
 #ifdef NYBBLE
 bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0};
 #else
-bool moduleActivatedQ[] = {0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+// default enable Grove_Serial for the AI dialogue module to work.
+bool moduleActivatedQ[] = {1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0};
 #endif
 bool moduleDemoQ = false;
 int8_t moduleIndex;

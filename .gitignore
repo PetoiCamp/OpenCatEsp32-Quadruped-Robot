@@ -1,4 +1,6 @@
 .vscode
+.clangd
+compile_flags.txt
 *.docx
 *.rar
 *.DS_Store
@@ -6,6 +8,7 @@
 *.svd
 debug_custom.json
 build/
+scripts/
 
 # IP configuration files
 *ip.json
