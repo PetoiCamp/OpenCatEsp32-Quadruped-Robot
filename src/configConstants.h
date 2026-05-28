@@ -596,7 +596,7 @@ void configSetup() {
     for (byte i = 0; i < sizeof(moduleList) / sizeof(char); i++)
       i2c_eeprom_write_byte(EEPROM_MODULE_ENABLED_LIST + i, moduleActivatedQ[i]);
     i2c_eeprom_write_byte(EEPROM_DEFAULT_LAN, 'a');  // a for English, b for Chinese
-    i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, 'b');  // a for English, b for Chinese
+    i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, 'a');  // a for English, b for Chinese
     // save a preset skill to the temp skill in case its called before assignment
     unsigned int i2cEepromAddress = SERIAL_BUFF + 2;  // + esp_random() % (EEPROM_SIZE - SERIAL_BUFF - 2 - 2550); //save
                                                       // to random position to protect the EEPROM
@@ -612,7 +612,7 @@ void configSetup() {
     config.putChar("buzzerVolume", buzzerVolume);
     config.putBytes("moduleState", moduleActivatedQ, sizeof(moduleList) / sizeof(char));
     config.putChar("defaultLan", 'a');  // a for English, b for Chinese
-    config.putChar("currentLan", 'b');  // a for English, b for Chinese
+    config.putChar("currentLan", 'a');  // a for English, b for Chinese
     // save a preset skill to the temp skill in case its called before assignment
     config.putInt("tmpLen", bufferLen);
     config.putBytes("tmp", (int8_t *)newCmd, bufferLen);
