@@ -162,20 +162,11 @@ void voiceSyncAtStartup() {
   sendVoiceModuleCmd("Ac");
   delay(350);
 
-  if (defaultLan == 'a') {
-    // English default: XAc -> XAb -> XAa (module needs this order on cold boot)
-    sendVoiceModuleCmd("Ab");
-    delay(350);
-    sendVoiceModuleCmd("Aa");
-    currentLan = 'a';
-  } else {
-    char lan = (currentLan == 'a' || currentLan == 'b') ? currentLan : defaultLan;
-    if (lan != 'a' && lan != 'b')
-      lan = 'b';
-    char langCmd[3] = {'A', lan, '\0'};
-    sendVoiceModuleCmd(langCmd);
-    currentLan = lan;
-  }
+  char lan = defaultLan;
+  char langCmd[3] = {'A', lan, '\0'};
+  sendVoiceModuleCmd(langCmd);
+  currentLan = lan;
+
 #ifdef I2C_EEPROM_ADDRESS
   i2c_eeprom_write_byte(EEPROM_CURRENT_LAN, currentLan);
 #else

@@ -362,16 +362,8 @@ void reconfigureTheActiveModule(char *moduleCode) {
 void initModuleManager() {
   byte moduleCount = sizeof(moduleList) / sizeof(char);
   PTHL("Module count: ", moduleCount);
-#ifdef VOICE
-  // Init Voice before Grove Serial2 so Serial1 gets RX26/TX25 before UART2 uses 9/10
-  if (moduleActivatedQfunction(EXTENSION_VOICE))
-    initModule(EXTENSION_VOICE);
-#endif
+
   for (byte i = 0; i < moduleCount; i++) {
-#ifdef VOICE
-    if (moduleList[i] == EXTENSION_VOICE)
-      continue;
-#endif
     if (moduleActivatedQ[i]) {
       initModule(moduleList[i]);
     }
