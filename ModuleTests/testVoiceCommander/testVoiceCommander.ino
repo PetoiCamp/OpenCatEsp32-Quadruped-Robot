@@ -42,13 +42,12 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(BAUD_RATE);
   Serial.setTimeout(5);
-  #ifdef BiBoard_V1_0
+#ifdef BiBoard_V1_0
   SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE, SERIAL_8N1, VOICE_RX, VOICE_TX);
 #else
   SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE);
 #endif
 
-  SERIAL_VOICE.begin(SERIAL2_BAUD_RATE);
   SERIAL_VOICE.setTimeout(5);
   listLength = min(int(sizeof(customizedCmdList) / sizeof(customizedCmdList[0])), MAX_CUSTOMIZED_CMD);
   Serial.print("Number of customized commands on the main board: ");

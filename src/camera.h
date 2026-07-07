@@ -747,7 +747,7 @@ void groveVisionSetup() {
   bool sensorEnable = true;
   uint16_t sensorVal =
       OPT_DETAIL_240
-      + (!strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_0 : OPT_ANGLE_90);  // 240*240, rotate 90 degrees if Bittle R
+      + (!strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_0 : OPT_ANGLE_90);  // 240*240, rotate 0 degrees if Bittle X+Arm
 
   Serial.println("Set sensor angle and resolution...");
   do {
@@ -773,26 +773,26 @@ void read_GroveVision() {
       height = AI.boxes()[0].h;  // read height value
       updateCoordinateLock = false;
       detectedObjectQ = true;
-      // if (cameraPrintQ)
-      // {
-      //   for (int i = 0; i < AI.boxes().size(); i++)
-      //   {
-      //     Serial.print("Box[");
-      //     Serial.print(i);
-      //     Serial.print("] target=");
-      //     Serial.print(AI.boxes()[i].target);
-      //     Serial.print(", score=");
-      //     Serial.print(AI.boxes()[i].score);
-      //     Serial.print(", x=");
-      //     Serial.print(AI.boxes()[i].x);
-      //     Serial.print(", y=");
-      //     Serial.print(AI.boxes()[i].y);
-      //     Serial.print(", w=");
-      //     Serial.print(AI.boxes()[i].w);
-      //     Serial.print(", h=");
-      //     Serial.println(AI.boxes()[i].h);
-      //   }
-      // }
+      if (cameraPrintQ)
+      {
+        for (int i = 0; i < AI.boxes().size(); i++)
+        {
+          Serial.print("Box[");
+          Serial.print(i);
+          Serial.print("] target=");
+          Serial.print(AI.boxes()[i].target);
+          Serial.print(", score=");
+          Serial.print(AI.boxes()[i].score);
+          Serial.print(", x=");
+          Serial.print(AI.boxes()[i].x);
+          Serial.print(", y=");
+          Serial.print(AI.boxes()[i].y);
+          Serial.print(", w=");
+          Serial.print(AI.boxes()[i].w);
+          Serial.print(", h=");
+          Serial.println(AI.boxes()[i].h);
+        }
+      }
 #ifdef SHOW_FPS
       if (cameraPrintQ == 2 && cameraTaskActiveQ) 
       {
