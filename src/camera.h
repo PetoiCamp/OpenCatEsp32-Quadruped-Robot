@@ -745,10 +745,14 @@ void groveVisionSetup() {
 
   uint8_t count = 0;
   bool sensorEnable = true;
+
+  // Coordinate range: 240*240.
+  // For Bittle X+Arm, the Petoi logo on the module should be verticall; 
+  // otherwise, the Petoi logo should be horizontal.
   uint16_t sensorVal =
       OPT_DETAIL_240
-      + (!strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_0 : OPT_ANGLE_90);  // 240*240, rotate 0 degrees if Bittle X+Arm
-
+      + (!strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_0 : OPT_ANGLE_90);  
+                                                                        
   Serial.println("Set sensor angle and resolution...");
   do {
     delay(10);
