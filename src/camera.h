@@ -747,7 +747,7 @@ void groveVisionSetup() {
   bool sensorEnable = true;
   uint16_t sensorVal =
       OPT_DETAIL_240
-      + (strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_90 : OPT_ANGLE_0);  // 240*240, rotate 90 degrees if Bittle R
+      + (!strcmp(MODEL, "Bittle X+Arm") ? OPT_ANGLE_0 : OPT_ANGLE_90);  // 240*240, rotate 90 degrees if Bittle R
 
   Serial.println("Set sensor angle and resolution...");
   do {
