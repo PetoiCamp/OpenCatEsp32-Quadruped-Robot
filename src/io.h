@@ -12,7 +12,7 @@ template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
   String textResponse = String(text);
   // Echo motion completion tokens to Xiaozhi voice UART before appending newline,
-  // otherwise "k"/"m" become "k\r\n"/"m\r\n" and the match never succeeds.  && SERIAL_VOICE.available()
+  // otherwise "k"/"m" become "k\r\n"/"m\r\n" and the match never succeeds.
   if (moduleActivatedQ[1] && (textResponse == "k" || textResponse == "m")) {
     SERIAL_VOICE.write((uint8_t)textResponse.charAt(0));
     SERIAL_VOICE.flush();
