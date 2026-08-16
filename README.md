@@ -40,7 +40,7 @@ Since then:
 
 BiBoard is the control board for:
 
-- 🐶 [Bittle X — mini robot dog & AI robotics kit with voice control](https://www.petoi.com/products/petoi-robot-dog-bittle-x-voice-controlled?utm_source=github&utm_medium=code&utm_campaign=github-opencat)
+- 🐶 [Bittle X — mini robot dog & AI robotics kit with voice control](https://www.petoi.com/products/petoi-robot-dog-bittle-x-voice-controlled?utm_source=github&utm_medium=code&utm_campaign=github-opencat) · [buy on Amazon](https://www.amazon.com/dp/B0FNT6TSVT?utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-amazon-buy-link)
 - 🐱 [Nybble Q — mini robot cat & AI robotics kit](https://www.petoi.com/products/petoi-nybble-q-robot-cat?utm_source=github&utm_medium=code&utm_campaign=github-opencat)
 
 The older [Bittle](https://www.petoi.com/collections/robots/products/petoi-bittle-robot-dog?utm_source=github&utm_medium=code&utm_campaign=github-opencat) and [Nybble](https://www.petoi.com/collections/robots/products/petoi-nybble-robot-cat?utm_source=github&utm_medium=code&utm_campaign=github-opencat) (NyBoard) are discontinued. BiBoard is the current platform.
