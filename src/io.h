@@ -11,7 +11,10 @@
 template<typename T>
 void printToAllPorts(T text, bool newLine = true) {
   String textResponse = String(text);
-
+  
+// Motion-completion handshake for the Xiaozhi AI dialogue module: it commands a motion and
+// needs to know when the robot has finished. It matches on the bare token, which is why
+// there is deliberately no terminator here.
 #ifndef XIAOZHI_COMPLETION_ECHO
 #define XIAOZHI_COMPLETION_ECHO 1
 #endif
