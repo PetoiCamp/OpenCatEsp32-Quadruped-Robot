@@ -27,7 +27,7 @@ This is the codebase for current-generation Petoi hardware. If you're on the old
 
 **Source code is not yet public.** It's an upgraded version of the OpenCat project, and its ESP32-S3 code structure is closer to this repo than to the main NyBoard-based [OpenCat repo](https://github.com/PetoiCamp/OpenCat-Quadruped-Robot). We plan to open source it before Quaddle delivery.
 
-- Watch this repo and [r/petoi](https://www.reddit.com/r/Petoi/) for the open-source announcement
+- Watch this repo, [r/petoi](https://www.reddit.com/r/Petoi/), and [Discord](https://discord.com/invite/ckdu23q8nr) for the open-source announcement
 - [Get notified on Kickstarter](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=github_opencat_notify-link&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-notify-link) when it goes live
 - Check out the [Quaddle Hugging Face page](https://huggingface.co/petoi/quaddle)
 
