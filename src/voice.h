@@ -83,11 +83,17 @@ void beginVoiceSerial() {
   SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE, SERIAL_8N1, VOICE_RX, VOICE_TX);
   PTLF("Voice Serial1 @9600 (RX26 TX25)");
 #else
-  SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE);
-  PTLF("Voice Serial2 @9600");
+  // BiBoard V0.x shares Serial2 between Voice and Grove Serial.  Always
+  // reattach the UART matrix explicitly when changing back from Grove mode.
+  delay(20);
+  SERIAL_VOICE.begin(SERIAL_VOICE_BAUD_RATE, SERIAL_8N1, UART_RX2, UART_TX2);
+  PTLF("Voice Serial2 @9600 (RX16 TX17)");
 #endif
   SERIAL_VOICE.setTimeout(5);
   delay(20);
+  // Discard bytes sampled while the slide switch/UART baud rate was changing.
+  while (SERIAL_VOICE.available())
+    (void)SERIAL_VOICE.read();
 }
 
 // Drain RX for a while; config commands often have no immediate reply (do not treat as UART failure).
@@ -178,9 +184,11 @@ void voiceSyncAtStartup() {
   PTLF("Turn on the audio response");
 }
 
-void voiceStop() {
-  beginVoiceSerial();
-  sendVoiceModuleCmd("Ad");
+void voiceStop(bool notifyVoiceModule = true) {
+  if (notifyVoiceModule) {
+    beginVoiceSerial();
+    sendVoiceModuleCmd("Ad");
+  }
   SERIAL_VOICE.end();
   PTLF("Turn off the audio response");
   enableVoiceQ = false;

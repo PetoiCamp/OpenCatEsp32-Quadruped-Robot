@@ -1532,8 +1532,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         }
       default:
         {
-          printToAllPorts("Undefined token!");
-          printToAllPorts(newCmd);
+          // Keep malformed-input diagnostics on the USB debug port.  Sending
+          // them back to Grove Serial can create an echo loop with a UART
+          // bridge such as Xiaozhi and amplify one stale byte into many errors.
+          PTLF("Undefined token!");
+          PTL(newCmd);
           break;
         }
     }
