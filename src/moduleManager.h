@@ -74,8 +74,26 @@ void initModule(char moduleCode) {
     case EXTENSION_GROVE_SERIAL:
       {
         PTLF("Start Serial2");
+        // Voice and Grove share UART2 on BiBoard V0.x.  A full end/begin cycle
+        // plus an RX drain makes a 9600 -> 115200 hot switch deterministic.
+        Serial2.end();
+        delay(20);
         Serial2.begin(115200, SERIAL_8N1, UART_RX2, UART_TX2);
         Serial2.setTimeout(SERIAL_TIMEOUT);
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+        // Ignore traffic/noise during the physical mux and baud-rate settling
+        // window.  Normal command processing starts after the line is quiet.
+        unsigned long settleStart = millis();
+        while (millis() - settleStart < 100) {
+          while (Serial2.available())
+            (void)Serial2.read();
+          delay(1);
+        }
+#else
+        delay(20);
+        while (Serial2.available())
+          (void)Serial2.read();
+#endif
         break;
       }
 #ifdef VOICE
@@ -307,12 +325,17 @@ void reconfigureTheActiveModule(char *moduleCode) {
     if ((isCloseOnlyOperation && moduleList[i] != targetModule) || 
         (!isCloseOnlyOperation && moduleList[i] == targetModule)) continue;
     
-    // Original logic: protect voice and backtouch unless closing all
-    // BiBoard_V1_0: Grove_Serial (Serial2) and Voice (Serial1) can coexist
+    // Protect persistent modules unless closing all.
+    // Only BiBoard V0.1/V0.2 make Voice and Grove Serial mutually exclusive:
+    // XA stops Grove Serial, and XS stops Voice, because both use Serial2.
     if (!isCloseOnlyOperation &&
-        (moduleList[i] == EXTENSION_VOICE || moduleList[i] == EXTENSION_BACKTOUCH
+        (moduleList[i] == EXTENSION_BACKTOUCH
 #ifdef BiBoard_V1_0
-         || moduleList[i] == EXTENSION_GROVE_SERIAL
+         || moduleList[i] == EXTENSION_VOICE || moduleList[i] == EXTENSION_GROVE_SERIAL
+#elif defined BiBoard_V0_1 || defined BiBoard_V0_2
+         || (moduleList[i] == EXTENSION_VOICE && targetModule != EXTENSION_GROVE_SERIAL)
+#else
+         || moduleList[i] == EXTENSION_VOICE
 #endif
          ) &&
         targetModule != '-')
@@ -320,7 +343,19 @@ void reconfigureTheActiveModule(char *moduleCode) {
     
     // Unified disable logic
     PTHL("- disable", moduleNames[i]);
-    stopModule(moduleList[i]);
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+    // The slide switch may already route UART2 to Xiaozhi.  When XS replaces
+    // Voice with Grove Serial, close Voice silently instead of sending XAd at
+    // 9600 baud to a 115200-baud device.
+    if (moduleList[i] == EXTENSION_VOICE && targetModule == EXTENSION_GROVE_SERIAL) {
+#ifdef VOICE
+      voiceStop(false);
+#else
+      Serial2.end();
+#endif
+    } else
+#endif
+      stopModule(moduleList[i]);
     moduleActivatedQ[i] = false;
     statusChangedQ = true;
 #ifdef I2C_EEPROM_ADDRESS
@@ -365,7 +400,14 @@ void initModuleManager() {
     }
 #ifdef VOICE
     else if (moduleList[i] == EXTENSION_VOICE) {
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+      // Do not let voiceStop() reconfigure and close the shared Serial2 after
+      // Grove Serial has just been started from the persisted module state.
+      if (!moduleActivatedQ[indexOfModule(EXTENSION_GROVE_SERIAL)])
+        voiceStop();
+#else
       voiceStop();
+#endif
     }
 #endif
 #if defined ULTRASONIC && defined NYBBLE
@@ -379,6 +421,7 @@ void initModuleManager() {
 
 void read_serial() {
   Stream *serialPort = NULL;
+  bool fromGroveSerial = false;
 // String source;
 #ifdef BT_SSP
   if (SerialBT.available()) {  // give BT a higher priority over wired serial
@@ -386,20 +429,53 @@ void read_serial() {
     // source = "BT";
   } else
 #endif
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+    // Keep the USB control path available while the shared UART is receiving
+    // garbage at the old baud rate during a physical mode switch.
+    if (Serial.available()) {
+    serialPort = &Serial;
+  } else if (moduleActivatedQ[0] && Serial2.available()) {
+    serialPort = &Serial2;
+    fromGroveSerial = true;
+  }
+#else
     if (moduleActivatedQ[0] && Serial2.available()) {
     serialPort = &Serial2;
+    fromGroveSerial = true;
   } else if (Serial.available()) {
     serialPort = &Serial;
     // source = "SER";
   }
+#endif
   if (serialPort) {
-    token = serialPort->read();
+    int firstByte = serialPort->read();
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+    if (fromGroveSerial) {
+      // Resynchronize at the start of an ASCII command.  CR/LF/NUL and bytes
+      // outside printable ASCII can be sampled while the slide switch changes
+      // position or while UART2 changes baud rate.
+      while (firstByte != -1 && (firstByte < 33 || firstByte > 126)) {
+        if (!serialPort->available())
+          return;
+        firstByte = serialPort->read();
+      }
+    }
+#endif
+    if (firstByte == -1)
+      return;
+    token = (char)firstByte;
     lowerToken = tolower(token);
     newCmdIdx = 2;
     delay(1);                                                  // leave enough time for serial read
     terminator = (token >= 'A' && token <= 'Z') ? '~' : '\n';  // capitalized tokens use binary encoding for long data commands
                                                                //'~' ASCII code = 126; may introduce bug when the angle is 126 so only use angles <= 125
-    serialTimeout = (token == T_SKILL_DATA || lowerToken == T_BEEP) ? SERIAL_TIMEOUT_LONG : SERIAL_TIMEOUT;
+    serialTimeout = (token == T_SKILL_DATA || lowerToken == T_BEEP)
+                      ? SERIAL_TIMEOUT_LONG
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+                      : (fromGroveSerial ? 100 : SERIAL_TIMEOUT);
+#else
+                      : SERIAL_TIMEOUT;
+#endif
     lastSerialTime = millis();
     do {
       if (serialPort->available()) {
@@ -474,8 +550,15 @@ void readSignal() {
 //     webServer.handleClient();
 // #endif
 #ifdef VOICE
+#if defined BiBoard_V0_1 || defined BiBoard_V0_2
+  // Do not parse the newly routed Xiaozhi UART at Voice's old 9600 baud in
+  // the same loop iteration that is processing XA/XS from another port.
+  if (!newCmdIdx && moduleActivatedQ[indexOfModule(EXTENSION_VOICE)])
+    read_voice();
+#else
   if (moduleActivatedQ[indexOfModule(EXTENSION_VOICE)])
     read_voice();
+#endif
 #endif
 
   long current = millis();

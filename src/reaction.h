@@ -556,11 +556,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
               }
               vTaskDelay(100 / portTICK_PERIOD_MS);
             }
-            
+
             PTLF("Calibration completed, allowing IMU to stabilize...");
-            delay(3000); // Allow IMU to stabilize after calibration
-            beep(18, 50, 50, 6);
             createIMUTask();
+            delay(3000); // Let the restarted IMU task collect stable samples before reactions resume
+            beep(18, 50, 50, 6);
           }
           else
           {
@@ -1532,8 +1532,11 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
         }
       default:
         {
-          printToAllPorts("Undefined token!");
-          printToAllPorts(newCmd);
+          // Keep malformed-input diagnostics on the USB debug port.  Sending
+          // them back to Grove Serial can create an echo loop with a UART
+          // bridge such as Xiaozhi and amplify one stale byte into many errors.
+          PTLF("Undefined token!");
+          PTL(newCmd);
           break;
         }
     }
