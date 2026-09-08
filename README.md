@@ -1,6 +1,6 @@
 # OpenCatESP32 — OpenCat Framework on ESP32/BiBoard
 
-🚀 **[Quaddle](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=github_opencat_hero-banner&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-hero-banner) — Petoi's newest OpenCat-lineage quadruped — goes live on Kickstarter Sept 2, 2026.** [Get notified →](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=github_opencat_hero-banner&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-hero-banner) (details below)
+🚀 **[Quaddle](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=cbcwga&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-hero-banner) — Petoi's newest OpenCat-lineage quadruped — goes live on Kickstarter Sept 2, 2026.** [Get notified →](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=cbcwga&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-hero-banner) (details below)
 
 OpenCatESP32 runs the OpenCat quadruped robotics framework on [BiBoard](https://www.petoi.com/products/biboard-esp32-development-board-for-quadruped-robot?utm_source=github&utm_medium=code&utm_campaign=github-opencat) — an ESP32-based development board designed for multi-degree-of-freedom legged robots with up to 12 servos. Developed by [Petoi](https://www.petoi.com?utm_source=github&utm_medium=code&utm_campaign=github-opencat), the maker of futuristic programmable robotic pets.
 
@@ -17,7 +17,7 @@ This is the codebase for current-generation Petoi hardware. If you're on the old
 ## Quaddle mini robot dog — launching on Kickstarter Sept 2, 2026
 ![](https://github.com/PetoiCamp/NonCodeFiles/blob/master/gif/quaddleCover.gif?raw=true)
 
-[Quaddle](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=github_opencat_quaddle-section&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-quaddle-section) is Petoi's newest quadruped, **going live on Kickstarter Sept 2, 2026** — a mini desk robot built on the same OpenCat lineage as Bittle and Nybble.
+[Quaddle](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=cbcwga&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-quaddle-section) is Petoi's newest quadruped, **going live on Kickstarter Sept 2, 2026** — a mini desk robot built on the same OpenCat lineage as Bittle and Nybble.
 
 - Full quadruped running on just **4 servos** instead of the usual 8–12, which forces genuinely different gait-design and leg-coordination solutions to still get all four legs walking, running, and balancing
 - Position-feedback servos — readable, not just drivable — which is what makes **Puppet Mode** possible: hand-guide the legs and record a motion directly, no code required
@@ -27,8 +27,8 @@ This is the codebase for current-generation Petoi hardware. If you're on the old
 
 **Source code is not yet public.** It's an upgraded version of the OpenCat project, and its ESP32-S3 code structure is closer to this repo than to the main NyBoard-based [OpenCat repo](https://github.com/PetoiCamp/OpenCat-Quadruped-Robot). We plan to open source it before Quaddle delivery.
 
-- Watch this repo, [r/petoi](https://www.reddit.com/r/Petoi/), and [Discord](https://discord.com/invite/ckdu23q8nr) for the open-source announcement
-- [Get notified on Kickstarter](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=github_opencat_notify-link&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-notify-link) when it goes live
+- Watch this repo and [r/petoi](https://www.reddit.com/r/Petoi/) for the open-source announcement
+- [Get notified on Kickstarter](https://www.kickstarter.com/projects/petoi/quaddle-open-source-desktop-robot-kit/?ref=cbcwga&utm_source=github&utm_medium=code&utm_campaign=github-opencat&utm_content=esp32-readme-notify-link) when it goes live
 - Check out the [Quaddle Hugging Face page](https://huggingface.co/petoi/quaddle)
 
 ---
@@ -117,7 +117,6 @@ OpenCat shows up in **AI robotics education** across K-12 programs, community co
 - [r/OpenCat](https://www.reddit.com/r/OpenCat/) — firmware code, framework hacking, extending and porting OpenCat
 - [r/Petoi](https://www.reddit.com/r/Petoi/) — hardware Q&A, builds, quadruped coding, RL experiments, curriculum, 3D-printed parts, general discussion
 - [Facebook Group](https://www.facebook.com/groups/385050523510952) — community discussion and builds
-- [Discord](https://discord.com/invite/ckdu23q8nr) — real-time chat with the Petoi community
 
 ---
 
