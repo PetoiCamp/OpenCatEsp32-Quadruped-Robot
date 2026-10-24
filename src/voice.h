@@ -100,12 +100,40 @@ static void drainVoiceRx(unsigned long ms = 200) {
   }
 }
 
+// "A" followed only by decimal digits -> one binary byte.
+// Serial monitor "XA15" is sent as 'X','A',15 rather than ASCII '1','5'.
+// Returns false for letter commands ("Ac") and values above 255 (those stay ASCII).
+static bool voiceAsciiDigitsToByte(const char *cmd, byte *value) {
+  if (cmd[0] != 'A' || cmd[1] == '\0')
+    return false;
+  int n = 0;
+  for (const char *p = cmd + 1; *p != '\0'; p++) {
+    if (*p < '0' || *p > '9')
+      return false;
+    n = n * 10 + (*p - '0');
+    if (n > 255)
+      return false;
+  }
+  *value = (byte)n;
+  return true;
+}
+
 // Send X-prefixed command (cmd without leading 'X', e.g. "Aa", "Ac").
 static void sendVoiceModuleCmd(const char *cmd) {
-  PTH("Voice TX: X", cmd);
-  PTL();
-  SERIAL_VOICE.print("X");
-  SERIAL_VOICE.println(cmd);
+  byte binValue;
+  if (voiceAsciiDigitsToByte(cmd, &binValue)) {
+    PTH("Voice TX: XA bin", binValue);
+    PTL();
+    SERIAL_VOICE.write('X');
+    SERIAL_VOICE.write('A');
+    SERIAL_VOICE.write(binValue);  // write(), so byte 0 is not dropped as a C-string terminator
+    SERIAL_VOICE.println();
+  } else {
+    PTH("Voice TX: X", cmd);
+    PTL();
+    SERIAL_VOICE.print("X");
+    SERIAL_VOICE.println(cmd);
+  }
   drainVoiceRx();
 }
 
@@ -117,6 +145,7 @@ void set_voice(char *cmd) {  // send some control command directly to the module
   // XAe: start learning
   // XAf: stop learning
   // XAg: clear the learning data
+  // XA<digits>: parse the digits as one number and send that byte, e.g. "XA15" -> 'X','A',15
   if (cmd[1] == 'a' || cmd[1] == 'b') {  // enter "XAa" in the serial monitor or add button "X65,97" in the mobile app to switch to English
     // 在串口监视器输入指令“XAa”或在手机app创建按键"X65,97"来切换到英文
     defaultLan = cmd[1];
