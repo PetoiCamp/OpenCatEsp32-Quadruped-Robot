@@ -1441,10 +1441,34 @@ void reaction() {  // Reminder:  reaction() is repeatedly called in the "forever
             skillName[CMD_LEN] = '\0';  // Ensure null termination
           }
           
-          if (!strcmp("x", skillName)        // x for random skill
-              || strcmp(lastCmd, skillName)  // won't transform for the same gait.
-              || skill->period <= 1          // skill->period can be NULL!
-              || (spacePos != NULL && timeOrAngle > 0)) {
+          // During a gait, a behavior keeps the legs moving and plays its head once.
+          // pickF uses hunt's head while walking.
+          bool headOverlayCmd = false;
+          if (skill != NULL && skill->period > 1 && skillName[0] != '\0' && strcmp(skillName, "x")) {
+            const char *overlayName = !strcmp(skillName, "pickF") ? "hunt" : skillName;
+            int behaviorIndex = skillList->lookUp(overlayName, false);
+            if (behaviorIndex >= 0 && skillList->get(behaviorIndex)->period < 0) {
+              headOverlayCmd = true;
+              char lr = overlayName[strlen(overlayName) - 1];
+              bool mirrorHead = lr == 'R'
+                                || ((lr == 'X' || lr != 'L')
+                                    && ((random(10) > 7 && random(10) > 5) || coinFace));
+              coinFace = !coinFace;
+              headOverlay.start(progmemPointer[behaviorIndex], mirrorHead);
+              PT("Head overlay: ");
+              PTL(skillList->get(behaviorIndex)->skillName);
+              if (skill->skillName[0] != '\0') {
+                strncpy(newCmd, skill->skillName, CMD_LEN);
+                newCmd[CMD_LEN] = '\0';
+              }
+            }
+          }
+
+          if (!headOverlayCmd
+              && (!strcmp("x", skillName)        // x for random skill
+                  || strcmp(lastCmd, skillName)  // won't transform for the same gait.
+                  || skill->period <= 1          // skill->period can be NULL!
+                  || (spacePos != NULL && timeOrAngle > 0))) {
             if (!strcmp(skillName, "bk"))
               strcpy(skillName, "bkF");
             

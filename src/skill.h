@@ -1,3 +1,4 @@
+#include "headOverlay.h"
 #define MEMORY_ADDRESS_SIZE 4
 class SkillPreview {
 public:
@@ -29,7 +30,7 @@ public:
     for (randomMindListLength = 0; randomMindList[randomMindListLength] != NULL; randomMindListLength++)
       ;
   }
-  int lookUp(const char *key) {
+  int lookUp(const char *key, bool feedback = true) {
     byte nSkills = sizeof(progmemPointer) / MEMORY_ADDRESS_SIZE;
     byte randSkillIdx = strcmp(key, "x") ? nSkills : random(nSkills);
     byte keyLen = strlen(key);
@@ -57,13 +58,16 @@ public:
           // || readName[nameLen - 1] == 'L' && !strncmp(readName, key, nameLen - 1)
           || (readName[nameLen - 1] != 'F' && strcmp(readName, "bk") && !strncmp(readName, key, keyLen - 1) && (lr == 'L' || lr == 'R' || lr == 'X'))  // L, R or X
       ) {
-        printToAllPorts(readName);
+        if (feedback)
+          printToAllPorts(readName);
         return s;
       }
     }
-    PT('?');  // key not found
-    PT(key);
-    PTL('?');  // it will print ?? in random mode. Why?
+    if (feedback) {
+      PT('?');  // key not found
+      PT(key);
+      PTL('?');  // it will print ?? in random mode. Why?
+    }
     return -1;
   }
 };
@@ -376,6 +380,8 @@ public:
         imuUpdated = false;
       }
 #endif
+      if (period > 0)
+        headOverlay.update();
       for (int jointIndex = 0; jointIndex < DOF; jointIndex++) {
         //          PT(jointIndex); PT('\t');
 // #ifdef ROBOT_ARM
@@ -396,8 +402,10 @@ public:
 #endif
         //          PT(jointIndex); PT('\t');
         float duty;
-        if ((abs(period) > 1 && jointIndex < firstMotionJoint)      // gait and non-walking joints
-            || (abs(period) == 1 && jointIndex < 4 && manualHeadQ)  // posture and head group and manually controlled head
+        if (headOverlay.active && jointIndex < HEAD_GROUP_LEN) {  // one-shot head overlay on the current gait or posture
+          duty = headOverlay.angles[jointIndex];
+        } else if ((abs(period) > 1 && jointIndex < firstMotionJoint)  // gait and non-walking joints
+                   || (abs(period) == 1 && jointIndex < 4 && manualHeadQ)  // posture and head group and manually controlled head
         ) {
           if (!manualHeadQ && jointIndex < 4) {
 #ifndef ROBOT_ARM
@@ -480,6 +488,7 @@ void loadBySkillName(const char *skillName) {  // get lookup information from on
     // if (skill != NULL)
     //   delete[] skill;
 
+    headOverlay.stop();  // a newly loaded skill owns the head again
     skill->offsetLR = (lr == 'L' ? 30 : (lr == 'R' ? -30 : 0));
     skill->buildSkill(skillList->get(skillIndex)->index);
     strcpy(newCmd, skill->skillName);
