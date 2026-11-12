@@ -518,6 +518,7 @@ void calibrateICM() {
   for (byte i = 0; i < 3; i++)
     PTT(icm.offset_gyro[i], '\t');
   PTL();
+  icm.resetFusion();
 }
 void icm42670Setup(bool calibrateQ = true) {
   PTLF("\nInitializing ICM42670...");
@@ -1064,24 +1065,6 @@ void taskCalibrateImuUsingCore0(void *parameter) {
 #ifdef IMU_ICM42670
   // IMU_ICM42670 lacks PrintActiveOffsets() method so need to do this piecemeal
   if (icmQ) {
-    icm.getOffset(200);
-
-    if (icm.offset_gyro[0] == -32768 || icm.offset_gyro[1] == -32768 || icm.offset_gyro[2] == -32768) {
-      PT("Reading error: ");
-      PT(icm.offset_gyro[0]);
-      PT('\t');
-      PT(icm.offset_gyro[1]);
-      PT('\t');
-      PT(icm.offset_gyro[2]);
-      PTL('\t');
-      while (!Serial.available()) {
-        playMelody(imuBad2, sizeof(imuBad2) / 2);
-      }
-      while (Serial.available()) {
-        Serial.read();
-      }
-    }
-
     PT("Current IMU Offsets:");  // Show current offsets before doing the calibration
     for (byte i = 0; i < 3; i++) {
       PTT(icm.offset_accel[i], '\t');
@@ -1093,6 +1076,17 @@ void taskCalibrateImuUsingCore0(void *parameter) {
 
     printToAllPorts("\nCalibrating...\n");
     calibrateICM();
+
+    // Do not let stale pose/acceleration values trigger a reaction while the
+    // freshly reset filter is collecting its first samples.
+    for (byte i = 0; i < 3; i++) {
+      ypr[i] = previous_ypr[i] = 0.0f;
+      xyzReal[i] = previousXYZ[i] = 0.0f;
+    }
+    imuUpdated = false;
+    imuException = 0;
+    prev_imuException = 0;
+    imuTime = millis();
   }
 #endif
   

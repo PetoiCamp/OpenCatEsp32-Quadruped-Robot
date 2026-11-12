@@ -24,6 +24,7 @@ public:
 
   // set
   int init(uint16_t odr, uint16_t accel_fsr, uint16_t gyro_fsr);
+  void resetFusion();
 
   // get
   float getAccelRatio(uint8_t accel_fsr);
@@ -43,7 +44,9 @@ public:
 private:
   uint32_t now = 0;
   float deltaT = 0.0;
-  uint32_t lastUpdate, firstUpdate;
+  uint32_t lastUpdate = 0, firstUpdate = 0;
+  bool timingReady = false;
+  float gbiasx = 0.0f, gbiasy = 0.0f, gbiasz = 0.0f;
   float accel_ratio;                        // accel FS_SEL
   float gyro_ratio;                         // gyro FS_SEL
   float q[4] = { 1.0f, 0.0f, 0.0f, 0.0f };  // vector to hold quaternion
