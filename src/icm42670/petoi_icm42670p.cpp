@@ -21,12 +21,27 @@ int imu42670p::init(uint16_t odr, uint16_t accel_fsr, uint16_t gyro_fsr)
   accel_ratio = 32768 / accel_fsr;
   // update gyro ratio
   gyro_ratio = 131.0 / (gyro_fsr / 250);
-  yawDrift = 0;
-  index = 0;
-  for(int8_t h = 0; h < MEAN_FILTER_SIZE; h++)
-    yprHistory[h][0] = yprHistory[h][1] = yprHistory[h][2] = 0;
-  firstRound = true;
+  resetFusion();
   return rc;
+}
+
+void imu42670p::resetFusion()
+{
+  yaw = pitch = roll = yawLag = yawDrift = 0.0f;
+  for (byte i = 0; i < 3; i++) {
+    ypr[i] = 0.0f;
+    for (int8_t h = 0; h < MEAN_FILTER_SIZE; h++)
+      yprHistory[h][i] = 0.0f;
+  }
+
+  q[0] = 1.0f;
+  q[1] = q[2] = q[3] = 0.0f;
+  gbiasx = gbiasy = gbiasz = 0.0f;
+  now = lastUpdate = firstUpdate = 0;
+  deltaT = 0.0f;
+  timingReady = false;
+  index = 0;
+  firstRound = true;
 }
 
 void imu42670p::getOffset(int num)
@@ -143,8 +158,6 @@ void imu42670p::MadgwickQuaternionUpdate(float ax, float ay, float az, float gyr
   float qDot1, qDot2, qDot3, qDot4;
   float hatDot1, hatDot2, hatDot3, hatDot4;
   float gerrx, gerry, gerrz;                                // gyro bias error
-  static float gbiasx = 0.0f, gbiasy = 0.0f, gbiasz = 0.0f; // gyro bias (static to maintain state)
-
   float GyroMeasError = PI * (40.0f / 180.0f);    // gyroscope measurement error in rads/s (start at 60 deg/s), then reduce after ~10 s to 3
   float beta = sqrt(3.0f / 4.0f) * GyroMeasError; // compute beta
   float GyroMeasDrift = PI * (2.0f / 180.0f);     // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
@@ -188,10 +201,16 @@ void imu42670p::MadgwickQuaternionUpdate(float ax, float ay, float az, float gyr
 
   // Normalize the gradient
   norm = sqrt(hatDot1 * hatDot1 + hatDot2 * hatDot2 + hatDot3 * hatDot3 + hatDot4 * hatDot4);
-  hatDot1 /= norm;
-  hatDot2 /= norm;
-  hatDot3 /= norm;
-  hatDot4 /= norm;
+  if (isfinite(norm) && norm > 1.0e-9f) {
+    hatDot1 /= norm;
+    hatDot2 /= norm;
+    hatDot3 /= norm;
+    hatDot4 /= norm;
+  } else {
+    // At the exact solution the corrective gradient is zero. Keep integrating
+    // the gyro instead of dividing by zero and poisoning the quaternion.
+    hatDot1 = hatDot2 = hatDot3 = hatDot4 = 0.0f;
+  }
 
   // Compute estimated gyroscope biases
   gerrx = _2q1 * hatDot2 - _2q2 * hatDot1 - _2q3 * hatDot4 + _2q4 * hatDot3;
@@ -220,6 +239,10 @@ void imu42670p::MadgwickQuaternionUpdate(float ax, float ay, float az, float gyr
 
   // Normalize the quaternion
   norm = sqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4); // normalise quaternion
+  if (!isfinite(norm) || norm <= 1.0e-9f) {
+    resetFusion();
+    return;
+  }
   norm = 1.0f / norm;
   q[0] = q1 * norm;
   q[1] = q2 * norm;
@@ -236,7 +259,9 @@ void imu42670p::MadgwickQuaternionUpdate(float ax, float ay, float az, float gyr
   int8_t newCount = firstRound ? index + 1 : MEAN_FILTER_SIZE;
   ypr[1] = ypr[1] * prevCount - yprHistory[index][1];
   ypr[2] = ypr[2] * prevCount - yprHistory[index][2];
-  yprHistory[index][1] = pitch = (asin(2.0f * (q[1] * q[3] - q[0] * q[2]))) * 180.0f / PI;
+  float sinPitch = 2.0f * (q[1] * q[3] - q[0] * q[2]);
+  sinPitch = max(-1.0f, min(1.0f, sinPitch));
+  yprHistory[index][1] = pitch = asin(sinPitch) * 180.0f / PI;
   if (az < 0) // the raw pitch won't exceed 90 degrees
     yprHistory[index][1] = (pitch < 0 ? -1 : 1) * 180 - pitch;
   yprHistory[index][2] = roll = (atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3])) * 180.0f / PI;
@@ -257,8 +282,20 @@ void imu42670p::getImuGyro()
     // transformIMUData();
     transformIMUDataWithOffset();
     now = micros();
+    if (!timingReady) {
+      // The first sample establishes the time base. Integrating the whole time
+      // since boot (or since a gc calibration pause) corrupts the quaternion.
+      lastUpdate = firstUpdate = now;
+      timingReady = true;
+      return;
+    }
     deltaT = ((now - lastUpdate) / 1000000.0f); // set integration time by time elapsed since last filter update
     lastUpdate = now;
+    if (!isfinite(deltaT) || deltaT <= 0.0f || deltaT > 0.1f) {
+      // Ignore stale samples after a pause or an I2C stall. The next sample can
+      // resume from the fresh time base recorded above.
+      return;
+    }
     // if (lastUpdate - firstUpdate > 10000000uL) {
     //   beta = 0.041;  // decrease filter gain after stabilized
     //   zeta = 0.015;  // increase gyro bias drift gain after stabilized
